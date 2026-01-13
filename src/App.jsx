@@ -67,7 +67,12 @@ export default function App() {
     chantierId: '',
     weekStart: 1,
     weekEnd: 1,
-    collaborateurs: [],
+    collaborateursParRole: {
+      comiteIA: [],
+      equipageSprint: [],
+      leaderSprint: [],
+      directeur: []
+    },
     status: 'todo',
     commentaire: '',
     avancement: 0
@@ -150,7 +155,7 @@ export default function App() {
       }
       setShowProjetModal(false);
       setEditingProjet(null);
-      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo', commentaire: '', avancement: 0 });
+      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateursParRole: { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }, status: 'todo', commentaire: '', avancement: 0 });
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -533,7 +538,8 @@ export default function App() {
                           <div className="divide-y">
                             {chantierProjets.map(projet => {
                               const statut = STATUTS.find(s => s.id === projet.status);
-                              const collabs = projet.collaborateurs || [];
+                              const roles = projet.collaborateursParRole || {};
+                              const hasAnyCollab = Object.values(roles).some(arr => arr && arr.length > 0);
                               
                               return (
                                 <div key={projet.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
@@ -574,20 +580,53 @@ export default function App() {
                                     </div>
                                   </div>
                                   
-                                  {/* Collaborateurs */}
-                                  <div className="flex items-center gap-1">
-                                    {collabs.length > 0 ? (
-                                      collabs.map(collabId => (
-                                        <span
-                                          key={collabId}
-                                          className="px-2 py-1 rounded text-white text-xs"
-                                          style={{ backgroundColor: getCollabColor(collabId) }}
-                                        >
-                                          {getCollabName(collabId)}
-                                        </span>
-                                      ))
+                                  {/* Collaborateurs par rôle */}
+                                  <div className="flex flex-col gap-1 text-xs">
+                                    {hasAnyCollab ? (
+                                      <>
+                                        {roles.comiteIA?.length > 0 && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-purple-600">🧠</span>
+                                            {roles.comiteIA.map(id => (
+                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#8B5CF6' }}>
+                                                {getCollabName(id)}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {roles.equipageSprint?.length > 0 && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-blue-600">🚀</span>
+                                            {roles.equipageSprint.map(id => (
+                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#3B82F6' }}>
+                                                {getCollabName(id)}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {roles.leaderSprint?.length > 0 && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-yellow-600">👑</span>
+                                            {roles.leaderSprint.map(id => (
+                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#F59E0B' }}>
+                                                {getCollabName(id)}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                        {roles.directeur?.length > 0 && (
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-red-600">🎯</span>
+                                            {roles.directeur.map(id => (
+                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#EF4444' }}>
+                                                {getCollabName(id)}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        )}
+                                      </>
                                     ) : (
-                                      <span className="text-gray-400 text-sm">Non assigné</span>
+                                      <span className="text-gray-400">Non assigné</span>
                                     )}
                                   </div>
                                   
@@ -760,40 +799,50 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Collaborateurs par groupe */}
+              {/* Collaborateurs par rôle */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Collaborateurs</label>
-                {['Comité IA', 'Équipage Sprint', 'Leader Sprint', 'Directeur'].map(groupe => {
-                  const collabsGroupe = collaborateurs.filter(c => c.groupe === groupe);
-                  if (collabsGroupe.length === 0) return null;
+                <label className="block text-sm font-medium text-gray-700 mb-2">Collaborateurs par rôle</label>
+                
+                {[
+                  { key: 'comiteIA', label: '🧠 Comité IA', color: '#8B5CF6' },
+                  { key: 'equipageSprint', label: '🚀 Équipage Sprint', color: '#3B82F6' },
+                  { key: 'leaderSprint', label: '👑 Leader Sprint', color: '#F59E0B' },
+                  { key: 'directeur', label: '🎯 Directeur', color: '#EF4444' }
+                ].map(role => {
+                  const currentRoles = editingProjet?.collaborateursParRole || newProjet.collaborateursParRole || {};
+                  const selectedForRole = currentRoles[role.key] || [];
+                  
                   return (
-                    <div key={groupe} className="mb-3">
-                      <div className="text-xs font-semibold text-gray-500 mb-1">{groupe}</div>
+                    <div key={role.key} className="mb-3 p-3 bg-gray-50 rounded-lg">
+                      <div className="text-sm font-semibold mb-2" style={{ color: role.color }}>
+                        {role.label}
+                      </div>
                       <div className="flex flex-wrap gap-2">
-                        {collabsGroupe.map(collab => {
-                          const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
+                        {collaborateurs.map(collab => {
+                          const isSelected = selectedForRole.includes(collab.id);
                           return (
                             <button
                               key={collab.id}
                               type="button"
                               onClick={() => {
-                                const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                                const updated = isSelected
-                                  ? current.filter(id => id !== collab.id)
-                                  : [...current, collab.id];
+                                const updatedRole = isSelected
+                                  ? selectedForRole.filter(id => id !== collab.id)
+                                  : [...selectedForRole, collab.id];
+                                
+                                const updatedRoles = { ...currentRoles, [role.key]: updatedRole };
                                 
                                 if (editingProjet) {
-                                  setEditingProjet({ ...editingProjet, collaborateurs: updated });
+                                  setEditingProjet({ ...editingProjet, collaborateursParRole: updatedRoles });
                                 } else {
-                                  setNewProjet({ ...newProjet, collaborateurs: updated });
+                                  setNewProjet({ ...newProjet, collaborateursParRole: updatedRoles });
                                 }
                               }}
-                              className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                              className={`px-2 py-1 rounded text-xs transition-all ${
                                 isSelected
                                   ? 'text-white'
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
                               }`}
-                              style={isSelected ? { backgroundColor: collab.color } : {}}
+                              style={isSelected ? { backgroundColor: role.color } : {}}
                             >
                               {collab.name}
                             </button>
@@ -803,43 +852,6 @@ export default function App() {
                     </div>
                   );
                 })}
-                {/* Collaborateurs sans groupe */}
-                {collaborateurs.filter(c => !c.groupe).length > 0 && (
-                  <div className="mb-3">
-                    <div className="text-xs font-semibold text-gray-500 mb-1">Autres</div>
-                    <div className="flex flex-wrap gap-2">
-                      {collaborateurs.filter(c => !c.groupe).map(collab => {
-                        const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
-                        return (
-                          <button
-                            key={collab.id}
-                            type="button"
-                            onClick={() => {
-                              const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                              const updated = isSelected
-                                ? current.filter(id => id !== collab.id)
-                                : [...current, collab.id];
-                              
-                              if (editingProjet) {
-                                setEditingProjet({ ...editingProjet, collaborateurs: updated });
-                              } else {
-                                setNewProjet({ ...newProjet, collaborateurs: updated });
-                              }
-                            }}
-                            className={`px-3 py-2 rounded-lg text-sm transition-all ${
-                              isSelected
-                                ? 'text-white'
-                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                            }`}
-                            style={isSelected ? { backgroundColor: collab.color } : {}}
-                          >
-                            {collab.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Commentaire */}
