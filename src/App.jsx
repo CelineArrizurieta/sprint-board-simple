@@ -68,7 +68,8 @@ export default function App() {
     weekStart: 1,
     weekEnd: 1,
     collaborateurs: [],
-    status: 'todo'
+    status: 'todo',
+    commentaire: ''
   });
   
   // Filtres
@@ -148,7 +149,7 @@ export default function App() {
       }
       setShowProjetModal(false);
       setEditingProjet(null);
-      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo' });
+      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo', commentaire: '' });
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -545,6 +546,9 @@ export default function App() {
                                   {/* Infos */}
                                   <div className="flex-1">
                                     <div className="font-medium text-gray-800">{projet.name}</div>
+                                    {projet.commentaire && (
+                                      <div className="text-sm text-gray-500 mt-1 italic">💬 {projet.commentaire}</div>
+                                    )}
                                     <div className="text-sm text-gray-500 flex items-center gap-4 mt-1">
                                       <span>📅 S{projet.weekStart}{projet.weekEnd !== projet.weekStart ? ` → S${projet.weekEnd}` : ''}</span>
                                       <span
@@ -748,6 +752,21 @@ export default function App() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Commentaire */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                <textarea
+                  value={editingProjet?.commentaire || newProjet.commentaire || ''}
+                  onChange={(e) => editingProjet
+                    ? setEditingProjet({ ...editingProjet, commentaire: e.target.value })
+                    : setNewProjet({ ...newProjet, commentaire: e.target.value })
+                  }
+                  placeholder="Notes, précisions, liens utiles..."
+                  rows={3}
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                />
               </div>
             </div>
 
