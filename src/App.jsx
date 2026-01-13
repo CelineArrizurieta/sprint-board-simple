@@ -625,13 +625,13 @@ export default function App() {
 
       {/* ========== MODAL PROJET ========== */}
       {showProjetModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4">
-            <h3 className="text-xl font-bold mb-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <h3 className="text-xl font-bold p-6 pb-4 border-b">
               {editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}
             </h3>
             
-            <div className="space-y-4">
+            <div className="overflow-y-auto flex-1 p-6 space-y-4">
               {/* Nom */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nom du projet *</label>
@@ -858,8 +858,8 @@ export default function App() {
               </div>
             </div>
 
-            {/* Boutons */}
-            <div className="flex gap-3 mt-6">
+            {/* Boutons - toujours visibles */}
+            <div className="flex gap-3 p-6 pt-4 border-t bg-white rounded-b-xl">
               <button
                 onClick={() => {
                   setShowProjetModal(false);
