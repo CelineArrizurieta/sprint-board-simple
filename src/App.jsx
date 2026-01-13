@@ -74,6 +74,7 @@ export default function App() {
       directeur: []
     },
     status: 'todo',
+    objectif: '',
     commentaire: '',
     avancement: 0
   });
@@ -155,7 +156,7 @@ export default function App() {
       }
       setShowProjetModal(false);
       setEditingProjet(null);
-      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateursParRole: { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }, status: 'todo', commentaire: '', avancement: 0 });
+      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateursParRole: { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }, status: 'todo', objectif: '', commentaire: '', avancement: 0 });
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -553,6 +554,11 @@ export default function App() {
                                   {/* Infos */}
                                   <div className="flex-1">
                                     <div className="font-medium text-gray-800">{projet.name}</div>
+                                    {projet.objectif && (
+                                      <div className="text-sm text-purple-600 mt-1">
+                                        🎯 {projet.objectif.length > 100 ? projet.objectif.substring(0, 100) + '...' : projet.objectif}
+                                      </div>
+                                    )}
                                     {projet.commentaire && (
                                       <div className="text-sm text-gray-500 mt-1 italic">
                                         💬 {projet.commentaire.length > 80 ? projet.commentaire.substring(0, 80) + '...' : projet.commentaire}
@@ -682,6 +688,21 @@ export default function App() {
                     : setNewProjet({ ...newProjet, name: e.target.value })
                   }
                   placeholder="Ex: Migration base de données"
+                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* Objectif */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">🎯 Objectif</label>
+                <textarea
+                  value={editingProjet?.objectif || newProjet.objectif || ''}
+                  onChange={(e) => editingProjet
+                    ? setEditingProjet({ ...editingProjet, objectif: e.target.value })
+                    : setNewProjet({ ...newProjet, objectif: e.target.value })
+                  }
+                  placeholder="Quel est l'objectif de cette mission ?"
+                  rows={2}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
                 />
               </div>
