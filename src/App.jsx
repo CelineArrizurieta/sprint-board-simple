@@ -69,7 +69,8 @@ export default function App() {
     weekEnd: 1,
     collaborateurs: [],
     status: 'todo',
-    commentaire: ''
+    commentaire: '',
+    avancement: 0
   });
   
   // Filtres
@@ -149,7 +150,7 @@ export default function App() {
       }
       setShowProjetModal(false);
       setEditingProjet(null);
-      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo', commentaire: '' });
+      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo', commentaire: '', avancement: 0 });
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -547,7 +548,9 @@ export default function App() {
                                   <div className="flex-1">
                                     <div className="font-medium text-gray-800">{projet.name}</div>
                                     {projet.commentaire && (
-                                      <div className="text-sm text-gray-500 mt-1 italic">💬 {projet.commentaire}</div>
+                                      <div className="text-sm text-gray-500 mt-1 italic">
+                                        💬 {projet.commentaire.length > 80 ? projet.commentaire.substring(0, 80) + '...' : projet.commentaire}
+                                      </div>
                                     )}
                                     <div className="text-sm text-gray-500 flex items-center gap-4 mt-1">
                                       <span>📅 S{projet.weekStart}{projet.weekEnd !== projet.weekStart ? ` → S${projet.weekEnd}` : ''}</span>
@@ -557,6 +560,17 @@ export default function App() {
                                       >
                                         {statut?.icon} {statut?.name}
                                       </span>
+                                      {projet.avancement > 0 && (
+                                        <span className="flex items-center gap-1">
+                                          <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
+                                            <div 
+                                              className="h-full bg-green-500 rounded-full"
+                                              style={{ width: `${projet.avancement}%` }}
+                                            />
+                                          </div>
+                                          <span className="text-xs text-gray-500">{projet.avancement}%</span>
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                   
@@ -718,40 +732,114 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Collaborateurs */}
+              {/* Avancement */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Collaborateurs</label>
-                <div className="flex flex-wrap gap-2">
-                  {collaborateurs.map(collab => {
-                    const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
-                    return (
-                      <button
-                        key={collab.id}
-                        type="button"
-                        onClick={() => {
-                          const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                          const updated = isSelected
-                            ? current.filter(id => id !== collab.id)
-                            : [...current, collab.id];
-                          
-                          if (editingProjet) {
-                            setEditingProjet({ ...editingProjet, collaborateurs: updated });
-                          } else {
-                            setNewProjet({ ...newProjet, collaborateurs: updated });
-                          }
-                        }}
-                        className={`px-3 py-2 rounded-lg text-sm transition-all ${
-                          isSelected
-                            ? 'text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                        style={isSelected ? { backgroundColor: collab.color } : {}}
-                      >
-                        {collab.name}
-                      </button>
-                    );
-                  })}
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Avancement : {editingProjet?.avancement || newProjet.avancement || 0}%
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="10"
+                  value={editingProjet?.avancement || newProjet.avancement || 0}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (editingProjet) {
+                      setEditingProjet({ ...editingProjet, avancement: val });
+                    } else {
+                      setNewProjet({ ...newProjet, avancement: val });
+                    }
+                  }}
+                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>0%</span>
+                  <span>50%</span>
+                  <span>100%</span>
                 </div>
+              </div>
+
+              {/* Collaborateurs par groupe */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Collaborateurs</label>
+                {['Comité IA', 'Équipage Sprint', 'Leader Sprint', 'Directeur'].map(groupe => {
+                  const collabsGroupe = collaborateurs.filter(c => c.groupe === groupe);
+                  if (collabsGroupe.length === 0) return null;
+                  return (
+                    <div key={groupe} className="mb-3">
+                      <div className="text-xs font-semibold text-gray-500 mb-1">{groupe}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {collabsGroupe.map(collab => {
+                          const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
+                          return (
+                            <button
+                              key={collab.id}
+                              type="button"
+                              onClick={() => {
+                                const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                                const updated = isSelected
+                                  ? current.filter(id => id !== collab.id)
+                                  : [...current, collab.id];
+                                
+                                if (editingProjet) {
+                                  setEditingProjet({ ...editingProjet, collaborateurs: updated });
+                                } else {
+                                  setNewProjet({ ...newProjet, collaborateurs: updated });
+                                }
+                              }}
+                              className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                                isSelected
+                                  ? 'text-white'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                              }`}
+                              style={isSelected ? { backgroundColor: collab.color } : {}}
+                            >
+                              {collab.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Collaborateurs sans groupe */}
+                {collaborateurs.filter(c => !c.groupe).length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs font-semibold text-gray-500 mb-1">Autres</div>
+                    <div className="flex flex-wrap gap-2">
+                      {collaborateurs.filter(c => !c.groupe).map(collab => {
+                        const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
+                        return (
+                          <button
+                            key={collab.id}
+                            type="button"
+                            onClick={() => {
+                              const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                              const updated = isSelected
+                                ? current.filter(id => id !== collab.id)
+                                : [...current, collab.id];
+                              
+                              if (editingProjet) {
+                                setEditingProjet({ ...editingProjet, collaborateurs: updated });
+                              } else {
+                                setNewProjet({ ...newProjet, collaborateurs: updated });
+                              }
+                            }}
+                            className={`px-3 py-2 rounded-lg text-sm transition-all ${
+                              isSelected
+                                ? 'text-white'
+                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                            }`}
+                            style={isSelected ? { backgroundColor: collab.color } : {}}
+                          >
+                            {collab.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Commentaire */}
