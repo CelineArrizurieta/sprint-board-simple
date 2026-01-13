@@ -73,6 +73,7 @@ export default async function handler(req, res) {
           weekEnd: record.fields.WeekEnd || record.fields.WeekStart || 1,
           collaborateursParRole: record.fields.CollaborateursParRole ? JSON.parse(record.fields.CollaborateursParRole) : { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
           status: record.fields.Status || 'todo',
+          objectif: record.fields.Objectif || '',
           commentaire: record.fields.Commentaire || '',
           avancement: record.fields.Avancement || 0,
         }));
@@ -81,7 +82,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'POST') {
-        const { name, chantierId, weekStart, weekEnd, collaborateursParRole, status, commentaire, avancement } = req.body;
+        const { name, chantierId, weekStart, weekEnd, collaborateursParRole, status, objectif, commentaire, avancement } = req.body;
         
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'POST',
@@ -95,6 +96,7 @@ export default async function handler(req, res) {
                 WeekEnd: weekEnd || weekStart || 1,
                 CollaborateursParRole: JSON.stringify(collaborateursParRole || { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }),
                 Status: status || 'todo',
+                Objectif: objectif || '',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
               }
@@ -115,6 +117,7 @@ export default async function handler(req, res) {
             weekEnd: record.fields.WeekEnd,
             collaborateursParRole: record.fields.CollaborateursParRole ? JSON.parse(record.fields.CollaborateursParRole) : { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
             status: record.fields.Status,
+            objectif: record.fields.Objectif || '',
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
           }
@@ -122,7 +125,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateursParRole, status, commentaire, avancement } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateursParRole, status, objectif, commentaire, avancement } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
@@ -138,6 +141,7 @@ export default async function handler(req, res) {
                 WeekEnd: weekEnd || weekStart || 1,
                 CollaborateursParRole: JSON.stringify(collaborateursParRole || { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }),
                 Status: status || 'todo',
+                Objectif: objectif || '',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
               }
@@ -158,6 +162,7 @@ export default async function handler(req, res) {
             weekEnd: record.fields.WeekEnd,
             collaborateursParRole: record.fields.CollaborateursParRole ? JSON.parse(record.fields.CollaborateursParRole) : { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
             status: record.fields.Status,
+            objectif: record.fields.Objectif || '',
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
           }
