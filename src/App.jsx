@@ -82,6 +82,8 @@ export default function App() {
   // Filtres
   const [filtreAxe, setFiltreAxe] = useState('');
   const [filtreChantier, setFiltreChantier] = useState('');
+  const [filtreAvancement, setFiltreAvancement] = useState('');
+  const [filtreDirecteur, setFiltreDirecteur] = useState('');
 
   // ========== AUTH ==========
   const handleLogin = () => {
@@ -224,13 +226,72 @@ export default function App() {
 
   // Projets filtrés
   const projetsFiltres = projets.filter(p => {
+    // Filtre par axe
     if (filtreAxe) {
       const chantier = getChantier(p.chantierId);
       if (chantier?.axeId !== filtreAxe) return false;
     }
+    // Filtre par chantier
     if (filtreChantier && p.chantierId !== filtreChantier) return false;
+    
+    // Filtre par avancement
+    if (filtreAvancement) {
+      const av = p.avancement || 0;
+      if (filtreAvancement === '0' && av !== 0) return false;
+      if (filtreAvancement === '1-30' && (av < 1 || av > 30)) return false;
+      if (filtreAvancement === '40-60' && (av < 40 || av > 60)) return false;
+      if (filtreAvancement === '70-90' && (av < 70 || av > 90)) return false;
+      if (filtreAvancement === '100' && av !== 100) return false;
+    }
+    
+    // Filtre par directeur
+    if (filtreDirecteur) {
+      const roles = p.collaborateursParRole || {};
+      const directeurs = roles.directeur || [];
+      if (!directeurs.includes(filtreDirecteur)) return false;
+    }
+    
     return true;
   });
+
+  // Export CSV pour un directeur
+  const exportDirecteur = (directeurId) => {
+    const directeurName = getCollabName(directeurId);
+    const missionsDirecteur = projets.filter(p => {
+      const roles = p.collaborateursParRole || {};
+      return (roles.directeur || []).includes(directeurId);
+    });
+
+    // Créer le CSV
+    const headers = ['Projet', 'Objectif', 'Chantier', 'Axe', 'Semaines', 'Statut', 'Avancement', 'Comité IA', 'Équipage Sprint', 'Leader Sprint', 'Commentaire'];
+    const rows = missionsDirecteur.map(p => {
+      const chantier = getChantier(p.chantierId);
+      const axe = getAxeForChantier(p.chantierId);
+      const statut = STATUTS.find(s => s.id === p.status);
+      const roles = p.collaborateursParRole || {};
+      
+      return [
+        p.name,
+        p.objectif || '',
+        chantier?.name || '',
+        axe?.name || '',
+        `S${p.weekStart}${p.weekEnd !== p.weekStart ? '-S' + p.weekEnd : ''}`,
+        statut?.name || '',
+        `${p.avancement || 0}%`,
+        (roles.comiteIA || []).map(id => getCollabName(id)).join(', '),
+        (roles.equipageSprint || []).map(id => getCollabName(id)).join(', '),
+        (roles.leaderSprint || []).map(id => getCollabName(id)).join(', '),
+        p.commentaire || ''
+      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(';');
+    });
+
+    const csv = [headers.join(';'), ...rows].join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `missions-${directeurName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
   const currentWeeks = TRIMESTRES[trimestre];
 
@@ -466,8 +527,8 @@ export default function App() {
             {activeTab === 'projets' && (
               <div className="space-y-4">
                 {/* Filtres et bouton ajouter */}
-                <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                <div className="bg-white rounded-lg shadow p-4">
+                  <div className="flex flex-wrap items-center gap-4 mb-4">
                     <select
                       value={filtreAxe}
                       onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }}
@@ -488,24 +549,64 @@ export default function App() {
                         <option key={ch.id} value={ch.id}>{ch.name}</option>
                       ))}
                     </select>
+                    <select
+                      value={filtreAvancement}
+                      onChange={(e) => setFiltreAvancement(e.target.value)}
+                      className="p-2 border rounded-lg"
+                    >
+                      <option value="">Tout avancement</option>
+                      <option value="0">0% - Non commencé</option>
+                      <option value="1-30">1% - 30%</option>
+                      <option value="40-60">40% - 60%</option>
+                      <option value="70-90">70% - 90%</option>
+                      <option value="100">100% - Terminé</option>
+                    </select>
+                    <select
+                      value={filtreDirecteur}
+                      onChange={(e) => setFiltreDirecteur(e.target.value)}
+                      className="p-2 border rounded-lg"
+                    >
+                      <option value="">Tous les directeurs</option>
+                      {collaborateurs.map(collab => (
+                        <option key={collab.id} value={collab.id}>🎯 {collab.name}</option>
+                      ))}
+                    </select>
                   </div>
-                  <button
-                    onClick={() => {
-                      setNewProjet({
-                        name: '',
-                        chantierId: chantiers[0]?.id || '',
-                        weekStart: 1,
-                        weekEnd: 1,
-                        collaborateurs: [],
-                        status: 'todo'
-                      });
-                      setEditingProjet(null);
-                      setShowProjetModal(true);
-                    }}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-                  >
-                    ➕ Nouveau projet
-                  </button>
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm text-gray-500">
+                      {projetsFiltres.length} projet(s) affiché(s)
+                    </div>
+                    <div className="flex gap-2">
+                      {filtreDirecteur && (
+                        <button
+                          onClick={() => exportDirecteur(filtreDirecteur)}
+                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                        >
+                          📥 Export {getCollabName(filtreDirecteur)}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setNewProjet({
+                            name: '',
+                            chantierId: chantiers[0]?.id || '',
+                            weekStart: 1,
+                            weekEnd: 1,
+                            collaborateursParRole: { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
+                            status: 'todo',
+                            objectif: '',
+                            commentaire: '',
+                            avancement: 0
+                          });
+                          setEditingProjet(null);
+                          setShowProjetModal(true);
+                        }}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                      >
+                        ➕ Nouveau projet
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Liste par chantier */}
