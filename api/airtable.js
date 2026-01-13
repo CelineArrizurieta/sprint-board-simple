@@ -74,13 +74,14 @@ export default async function handler(req, res) {
           collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
           status: record.fields.Status || 'todo',
           commentaire: record.fields.Commentaire || '',
+          avancement: record.fields.Avancement || 0,
         }));
 
         return res.status(200).json({ items });
       }
 
       if (req.method === 'POST') {
-        const { name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire } = req.body;
+        const { name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement } = req.body;
         
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'POST',
@@ -95,6 +96,7 @@ export default async function handler(req, res) {
                 Collaborateurs: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
                 Commentaire: commentaire || '',
+                Avancement: avancement || 0,
               }
             }]
           }),
@@ -114,12 +116,13 @@ export default async function handler(req, res) {
             collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
             status: record.fields.Status,
             commentaire: record.fields.Commentaire || '',
+            avancement: record.fields.Avancement || 0,
           }
         });
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
@@ -136,6 +139,7 @@ export default async function handler(req, res) {
                 Collaborateurs: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
                 Commentaire: commentaire || '',
+                Avancement: avancement || 0,
               }
             }]
           }),
@@ -155,6 +159,7 @@ export default async function handler(req, res) {
             collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
             status: record.fields.Status,
             commentaire: record.fields.Commentaire || '',
+            avancement: record.fields.Avancement || 0,
           }
         });
       }
@@ -219,6 +224,7 @@ export default async function handler(req, res) {
           role: record.fields.Role || '',
           color: record.fields.Color || '#7B1FA2',
           email: record.fields.Email || '',
+          groupe: record.fields.Groupe || '',
           order: record.fields.Order || 0,
         }));
 
