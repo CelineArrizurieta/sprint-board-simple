@@ -73,13 +73,14 @@ export default async function handler(req, res) {
           weekEnd: record.fields.WeekEnd || record.fields.WeekStart || 1,
           collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
           status: record.fields.Status || 'todo',
+          commentaire: record.fields.Commentaire || '',
         }));
 
         return res.status(200).json({ items });
       }
 
       if (req.method === 'POST') {
-        const { name, chantierId, weekStart, weekEnd, collaborateurs, status } = req.body;
+        const { name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire } = req.body;
         
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'POST',
@@ -93,6 +94,7 @@ export default async function handler(req, res) {
                 WeekEnd: weekEnd || weekStart || 1,
                 Collaborateurs: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
+                Commentaire: commentaire || '',
               }
             }]
           }),
@@ -111,12 +113,13 @@ export default async function handler(req, res) {
             weekEnd: record.fields.WeekEnd,
             collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
             status: record.fields.Status,
+            commentaire: record.fields.Commentaire || '',
           }
         });
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
@@ -132,6 +135,7 @@ export default async function handler(req, res) {
                 WeekEnd: weekEnd || weekStart || 1,
                 Collaborateurs: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
+                Commentaire: commentaire || '',
               }
             }]
           }),
@@ -150,6 +154,7 @@ export default async function handler(req, res) {
             weekEnd: record.fields.WeekEnd,
             collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
             status: record.fields.Status,
+            commentaire: record.fields.Commentaire || '',
           }
         });
       }
