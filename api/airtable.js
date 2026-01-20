@@ -8,7 +8,7 @@ const TABLES = {
   sprints: 'tblSFNt5dWgiU89g2',
   axes: 'tblBwHP0Ft9pkntyy',
   chantiers: 'tblIkKyzPB7u8NWzI',
-  collaborateurs: 'tbleTHV3SZhiKOJ5h',
+  collaborateurs: 'tblVtL5KEJQmxBra3', // Nouvelle table Collaborateurs (20 jan 2026)
 };
 
 const getAirtableUrl = (table) => `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${table}`;
@@ -71,18 +71,21 @@ export default async function handler(req, res) {
           chantierId: record.fields.ChantierId || '',
           weekStart: record.fields.WeekStart || 1,
           weekEnd: record.fields.WeekEnd || record.fields.WeekStart || 1,
-          collaborateursParRole: record.fields.CollaborateursParRole ? JSON.parse(record.fields.CollaborateursParRole) : { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
+          collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
           status: record.fields.Status || 'todo',
-          objectif: record.fields.Objectif || '',
           commentaire: record.fields.Commentaire || '',
           avancement: record.fields.Avancement || 0,
+          // Nouveaux champs équipe de cycle
+          referentComiteIA: record.fields.ReferentComiteIA || '',
+          referentConformite: record.fields.ReferentConformite || '',
+          meneur: record.fields.Meneur || '',
         }));
 
         return res.status(200).json({ items });
       }
 
       if (req.method === 'POST') {
-        const { name, chantierId, weekStart, weekEnd, collaborateursParRole, status, objectif, commentaire, avancement } = req.body;
+        const { name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, referentComiteIA, referentConformite, meneur } = req.body;
         
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'POST',
@@ -94,11 +97,13 @@ export default async function handler(req, res) {
                 ChantierId: chantierId,
                 WeekStart: weekStart || 1,
                 WeekEnd: weekEnd || weekStart || 1,
-                CollaborateursParRole: JSON.stringify(collaborateursParRole || { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }),
+                Collaborateurs: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
-                Objectif: objectif || '',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
+                ReferentComiteIA: referentComiteIA || '',
+                ReferentConformite: referentConformite || '',
+                Meneur: meneur || '',
               }
             }]
           }),
@@ -115,17 +120,19 @@ export default async function handler(req, res) {
             chantierId: record.fields.ChantierId,
             weekStart: record.fields.WeekStart,
             weekEnd: record.fields.WeekEnd,
-            collaborateursParRole: record.fields.CollaborateursParRole ? JSON.parse(record.fields.CollaborateursParRole) : { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
+            collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
             status: record.fields.Status,
-            objectif: record.fields.Objectif || '',
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
+            referentComiteIA: record.fields.ReferentComiteIA || '',
+            referentConformite: record.fields.ReferentConformite || '',
+            meneur: record.fields.Meneur || '',
           }
         });
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateursParRole, status, objectif, commentaire, avancement } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, referentComiteIA, referentConformite, meneur } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
@@ -139,11 +146,13 @@ export default async function handler(req, res) {
                 ChantierId: chantierId,
                 WeekStart: weekStart || 1,
                 WeekEnd: weekEnd || weekStart || 1,
-                CollaborateursParRole: JSON.stringify(collaborateursParRole || { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }),
+                Collaborateurs: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
-                Objectif: objectif || '',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
+                ReferentComiteIA: referentComiteIA || '',
+                ReferentConformite: referentConformite || '',
+                Meneur: meneur || '',
               }
             }]
           }),
@@ -160,11 +169,13 @@ export default async function handler(req, res) {
             chantierId: record.fields.ChantierId,
             weekStart: record.fields.WeekStart,
             weekEnd: record.fields.WeekEnd,
-            collaborateursParRole: record.fields.CollaborateursParRole ? JSON.parse(record.fields.CollaborateursParRole) : { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
+            collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
             status: record.fields.Status,
-            objectif: record.fields.Objectif || '',
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
+            referentComiteIA: record.fields.ReferentComiteIA || '',
+            referentConformite: record.fields.ReferentConformite || '',
+            meneur: record.fields.Meneur || '',
           }
         });
       }
@@ -226,10 +237,16 @@ export default async function handler(req, res) {
         const collaborateurs = records.map(record => ({
           id: record.fields.Id || record.id,
           name: record.fields.Name || '',
+          nomComplet: record.fields.NomComplet || record.fields.Name || '',
           role: record.fields.Role || '',
+          service: record.fields.Service || '',
           color: record.fields.Color || '#7B1FA2',
           email: record.fields.Email || '',
-          groupe: record.fields.Groupe || '',
+          // Nouveaux champs booléens
+          estDirecteur: record.fields.EstDirecteur || false,
+          estComiteStrategiqueIA: record.fields.EstComiteStrategiqueIA || false,
+          estCommissionConformite: record.fields.EstCommissionConformite || false,
+          peutEtreMeneur: record.fields.PeutEtreMeneur !== false, // Par défaut true
           order: record.fields.Order || 0,
         }));
 
