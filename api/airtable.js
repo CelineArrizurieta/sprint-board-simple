@@ -234,6 +234,9 @@ export default async function handler(req, res) {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.collaborateurs, headers);
         
+        // Fonction helper pour convertir les checkboxes Airtable (true ou "checked") en boolean
+        const toBool = (val) => val === true || val === 'checked' || val === 'TRUE' || val === true;
+        
         const collaborateurs = records.map(record => ({
           id: record.fields.Id || record.id,
           name: record.fields.Name || '',
@@ -242,11 +245,11 @@ export default async function handler(req, res) {
           service: record.fields.Service || '',
           color: record.fields.Color || '#7B1FA2',
           email: record.fields.Email || '',
-          // Nouveaux champs booléens
-          estDirecteur: record.fields.EstDirecteur || false,
-          estComiteStrategiqueIA: record.fields.EstComiteStrategiqueIA || false,
-          estCommissionConformite: record.fields.EstCommissionConformite || false,
-          peutEtreMeneur: record.fields.PeutEtreMeneur !== false, // Par défaut true
+          // Champs booléens - gérer les différents formats Airtable
+          estDirecteur: toBool(record.fields.EstDirecteur),
+          estComiteStrategiqueIA: toBool(record.fields.EstComiteStrategiqueIA),
+          estCommissionConformite: toBool(record.fields.EstCommissionConformite),
+          peutEtreMeneur: record.fields.PeutEtreMeneur === false ? false : true, // Par défaut true
           order: record.fields.Order || 0,
         }));
 
