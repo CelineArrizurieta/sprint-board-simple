@@ -65,13 +65,31 @@ export default async function handler(req, res) {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.items, headers);
         
+        // Helper pour parser les collaborateurs (peut être un objet par rôle ou un tableau simple)
+        const parseCollaborateurs = (val) => {
+          if (!val) return [];
+          try {
+            const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+            // Si c'est un objet avec des rôles, extraire tous les IDs
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              const allIds = [];
+              Object.values(parsed).forEach(v => {
+                if (Array.isArray(v)) allIds.push(...v);
+                else if (typeof v === 'string') allIds.push(v);
+              });
+              return [...new Set(allIds)]; // Dédupliquer
+            }
+            return Array.isArray(parsed) ? parsed : [];
+          } catch { return []; }
+        };
+        
         const items = records.map(record => ({
           id: record.id,
           name: record.fields.Name || '',
           chantierId: record.fields.ChantierId || '',
           weekStart: record.fields.WeekStart || 1,
           weekEnd: record.fields.WeekEnd || record.fields.WeekStart || 1,
-          collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
+          collaborateurs: parseCollaborateurs(record.fields.CollaborateursParRole),
           status: record.fields.Status || 'todo',
           commentaire: record.fields.Commentaire || '',
           avancement: record.fields.Avancement || 0,
@@ -97,7 +115,7 @@ export default async function handler(req, res) {
                 ChantierId: chantierId,
                 WeekStart: weekStart || 1,
                 WeekEnd: weekEnd || weekStart || 1,
-                Collaborateurs: JSON.stringify(collaborateurs || []),
+                CollaborateursParRole: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
@@ -113,6 +131,24 @@ export default async function handler(req, res) {
         if (data.error) throw new Error(data.error.message);
 
         const record = data.records[0];
+        
+        // Helper pour parser les collaborateurs
+        const parseCollabs = (val) => {
+          if (!val) return [];
+          try {
+            const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              const allIds = [];
+              Object.values(parsed).forEach(v => {
+                if (Array.isArray(v)) allIds.push(...v);
+                else if (typeof v === 'string') allIds.push(v);
+              });
+              return [...new Set(allIds)];
+            }
+            return Array.isArray(parsed) ? parsed : [];
+          } catch { return []; }
+        };
+        
         return res.status(201).json({
           item: {
             id: record.id,
@@ -120,7 +156,7 @@ export default async function handler(req, res) {
             chantierId: record.fields.ChantierId,
             weekStart: record.fields.WeekStart,
             weekEnd: record.fields.WeekEnd,
-            collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
+            collaborateurs: parseCollabs(record.fields.CollaborateursParRole),
             status: record.fields.Status,
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
@@ -146,7 +182,7 @@ export default async function handler(req, res) {
                 ChantierId: chantierId,
                 WeekStart: weekStart || 1,
                 WeekEnd: weekEnd || weekStart || 1,
-                Collaborateurs: JSON.stringify(collaborateurs || []),
+                CollaborateursParRole: JSON.stringify(collaborateurs || []),
                 Status: status || 'todo',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
@@ -161,6 +197,23 @@ export default async function handler(req, res) {
         const data = await response.json();
         if (data.error) throw new Error(data.error.message);
 
+        // Helper pour parser les collaborateurs
+        const parseCollabs = (val) => {
+          if (!val) return [];
+          try {
+            const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+              const allIds = [];
+              Object.values(parsed).forEach(v => {
+                if (Array.isArray(v)) allIds.push(...v);
+                else if (typeof v === 'string') allIds.push(v);
+              });
+              return [...new Set(allIds)];
+            }
+            return Array.isArray(parsed) ? parsed : [];
+          } catch { return []; }
+        };
+
         const record = data.records[0];
         return res.status(200).json({
           item: {
@@ -169,7 +222,7 @@ export default async function handler(req, res) {
             chantierId: record.fields.ChantierId,
             weekStart: record.fields.WeekStart,
             weekEnd: record.fields.WeekEnd,
-            collaborateurs: record.fields.Collaborateurs ? JSON.parse(record.fields.Collaborateurs) : [],
+            collaborateurs: parseCollabs(record.fields.CollaborateursParRole),
             status: record.fields.Status,
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
