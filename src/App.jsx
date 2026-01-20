@@ -67,23 +67,19 @@ export default function App() {
     chantierId: '',
     weekStart: 1,
     weekEnd: 1,
-    collaborateursParRole: {
-      comiteIA: [],
-      equipageSprint: [],
-      leaderSprint: [],
-      directeur: []
-    },
+    collaborateurs: [],
     status: 'todo',
-    objectif: '',
     commentaire: '',
-    avancement: 0
+    avancement: 0,
+    referentComiteIA: '',
+    referentConformite: '',
+    meneur: ''
   });
   
   // Filtres
   const [filtreAxe, setFiltreAxe] = useState('');
   const [filtreChantier, setFiltreChantier] = useState('');
-  const [filtreAvancement, setFiltreAvancement] = useState('');
-  const [filtreDirecteur, setFiltreDirecteur] = useState('');
+  const [searchCollab, setSearchCollab] = useState('');
 
   // ========== AUTH ==========
   const handleLogin = () => {
@@ -158,7 +154,11 @@ export default function App() {
       }
       setShowProjetModal(false);
       setEditingProjet(null);
-      setNewProjet({ name: '', chantierId: '', weekStart: 1, weekEnd: 1, collaborateursParRole: { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] }, status: 'todo', objectif: '', commentaire: '', avancement: 0 });
+      setNewProjet({ 
+        name: '', chantierId: '', weekStart: 1, weekEnd: 1, 
+        collaborateurs: [], status: 'todo', commentaire: '', avancement: 0,
+        referentComiteIA: '', referentConformite: '', meneur: ''
+      });
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -214,9 +214,37 @@ export default function App() {
     return collab?.color || '#666';
   };
 
+  const getCollab = (collabId) => {
+    return collaborateurs.find(c => c.id === collabId);
+  };
+
   const formatTime = (date) => {
     if (!date) return '';
     return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Filtres collaborateurs par rôle
+  const membresComiteIA = collaborateurs.filter(c => c.estComiteStrategiqueIA);
+  const membresConformite = collaborateurs.filter(c => c.estCommissionConformite);
+  const meneursPotentiels = collaborateurs.filter(c => c.peutEtreMeneur);
+  const directeurs = collaborateurs.filter(c => c.estDirecteur);
+
+  // Grouper collaborateurs par service
+  const collabsParService = collaborateurs.reduce((acc, collab) => {
+    const service = collab.service || 'Autre';
+    if (!acc[service]) acc[service] = [];
+    acc[service].push(collab);
+    return acc;
+  }, {});
+
+  // Calculer directeurs concernés à partir de l'équipe sélectionnée
+  const getDirecteursConcernes = (equipeIds) => {
+    const servicesImpliques = new Set();
+    equipeIds.forEach(id => {
+      const collab = getCollab(id);
+      if (collab?.service) servicesImpliques.add(collab.service);
+    });
+    return directeurs.filter(d => servicesImpliques.has(d.service));
   };
 
   // Chantiers filtrés par axe
@@ -226,72 +254,13 @@ export default function App() {
 
   // Projets filtrés
   const projetsFiltres = projets.filter(p => {
-    // Filtre par axe
     if (filtreAxe) {
       const chantier = getChantier(p.chantierId);
       if (chantier?.axeId !== filtreAxe) return false;
     }
-    // Filtre par chantier
     if (filtreChantier && p.chantierId !== filtreChantier) return false;
-    
-    // Filtre par avancement
-    if (filtreAvancement) {
-      const av = p.avancement || 0;
-      if (filtreAvancement === '0' && av !== 0) return false;
-      if (filtreAvancement === '1-30' && (av < 1 || av > 30)) return false;
-      if (filtreAvancement === '40-60' && (av < 40 || av > 60)) return false;
-      if (filtreAvancement === '70-90' && (av < 70 || av > 90)) return false;
-      if (filtreAvancement === '100' && av !== 100) return false;
-    }
-    
-    // Filtre par directeur
-    if (filtreDirecteur) {
-      const roles = p.collaborateursParRole || {};
-      const directeurs = roles.directeur || [];
-      if (!directeurs.includes(filtreDirecteur)) return false;
-    }
-    
     return true;
   });
-
-  // Export CSV pour un directeur
-  const exportDirecteur = (directeurId) => {
-    const directeurName = getCollabName(directeurId);
-    const missionsDirecteur = projets.filter(p => {
-      const roles = p.collaborateursParRole || {};
-      return (roles.directeur || []).includes(directeurId);
-    });
-
-    // Créer le CSV
-    const headers = ['Projet', 'Objectif', 'Chantier', 'Axe', 'Semaines', 'Statut', 'Avancement', 'Comité IA', 'Équipage Sprint', 'Leader Sprint', 'Commentaire'];
-    const rows = missionsDirecteur.map(p => {
-      const chantier = getChantier(p.chantierId);
-      const axe = getAxeForChantier(p.chantierId);
-      const statut = STATUTS.find(s => s.id === p.status);
-      const roles = p.collaborateursParRole || {};
-      
-      return [
-        p.name,
-        p.objectif || '',
-        chantier?.name || '',
-        axe?.name || '',
-        `S${p.weekStart}${p.weekEnd !== p.weekStart ? '-S' + p.weekEnd : ''}`,
-        statut?.name || '',
-        `${p.avancement || 0}%`,
-        (roles.comiteIA || []).map(id => getCollabName(id)).join(', '),
-        (roles.equipageSprint || []).map(id => getCollabName(id)).join(', '),
-        (roles.leaderSprint || []).map(id => getCollabName(id)).join(', '),
-        p.commentaire || ''
-      ].map(val => `"${String(val).replace(/"/g, '""')}"`).join(';');
-    });
-
-    const csv = [headers.join(';'), ...rows].join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `missions-${directeurName.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
 
   const currentWeeks = TRIMESTRES[trimestre];
 
@@ -378,7 +347,7 @@ export default function App() {
             📋 Gestion des Projets
           </button>
           <div className="ml-auto px-4 py-3 text-sm text-gray-500">
-            {projets.length} projet(s) • {chantiers.length} chantier(s)
+            {projets.length} projet(s) • {chantiers.length} chantier(s) • {collaborateurs.length} collaborateur(s)
           </div>
         </div>
       </div>
@@ -475,7 +444,12 @@ export default function App() {
                                           weekStart: week.num,
                                           weekEnd: week.num,
                                           collaborateurs: [],
-                                          status: 'todo'
+                                          status: 'todo',
+                                          commentaire: '',
+                                          avancement: 0,
+                                          referentComiteIA: '',
+                                          referentConformite: '',
+                                          meneur: ''
                                         });
                                         setEditingProjet(null);
                                         setShowProjetModal(true);
@@ -527,8 +501,8 @@ export default function App() {
             {activeTab === 'projets' && (
               <div className="space-y-4">
                 {/* Filtres et bouton ajouter */}
-                <div className="bg-white rounded-lg shadow p-4">
-                  <div className="flex flex-wrap items-center gap-4 mb-4">
+                <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
                     <select
                       value={filtreAxe}
                       onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }}
@@ -549,64 +523,29 @@ export default function App() {
                         <option key={ch.id} value={ch.id}>{ch.name}</option>
                       ))}
                     </select>
-                    <select
-                      value={filtreAvancement}
-                      onChange={(e) => setFiltreAvancement(e.target.value)}
-                      className="p-2 border rounded-lg"
-                    >
-                      <option value="">Tout avancement</option>
-                      <option value="0">0% - Non commencé</option>
-                      <option value="1-30">1% - 30%</option>
-                      <option value="40-60">40% - 60%</option>
-                      <option value="70-90">70% - 90%</option>
-                      <option value="100">100% - Terminé</option>
-                    </select>
-                    <select
-                      value={filtreDirecteur}
-                      onChange={(e) => setFiltreDirecteur(e.target.value)}
-                      className="p-2 border rounded-lg"
-                    >
-                      <option value="">Tous les directeurs</option>
-                      {collaborateurs.map(collab => (
-                        <option key={collab.id} value={collab.id}>🎯 {collab.name}</option>
-                      ))}
-                    </select>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm text-gray-500">
-                      {projetsFiltres.length} projet(s) affiché(s)
-                    </div>
-                    <div className="flex gap-2">
-                      {filtreDirecteur && (
-                        <button
-                          onClick={() => exportDirecteur(filtreDirecteur)}
-                          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                        >
-                          📥 Export {getCollabName(filtreDirecteur)}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setNewProjet({
-                            name: '',
-                            chantierId: chantiers[0]?.id || '',
-                            weekStart: 1,
-                            weekEnd: 1,
-                            collaborateursParRole: { comiteIA: [], equipageSprint: [], leaderSprint: [], directeur: [] },
-                            status: 'todo',
-                            objectif: '',
-                            commentaire: '',
-                            avancement: 0
-                          });
-                          setEditingProjet(null);
-                          setShowProjetModal(true);
-                        }}
-                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-                      >
-                        ➕ Nouveau projet
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    onClick={() => {
+                      setNewProjet({
+                        name: '',
+                        chantierId: chantiers[0]?.id || '',
+                        weekStart: 1,
+                        weekEnd: 1,
+                        collaborateurs: [],
+                        status: 'todo',
+                        commentaire: '',
+                        avancement: 0,
+                        referentComiteIA: '',
+                        referentConformite: '',
+                        meneur: ''
+                      });
+                      setEditingProjet(null);
+                      setShowProjetModal(true);
+                    }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                  >
+                    ➕ Nouveau projet
+                  </button>
                 </div>
 
                 {/* Liste par chantier */}
@@ -640,8 +579,8 @@ export default function App() {
                           <div className="divide-y">
                             {chantierProjets.map(projet => {
                               const statut = STATUTS.find(s => s.id === projet.status);
-                              const roles = projet.collaborateursParRole || {};
-                              const hasAnyCollab = Object.values(roles).some(arr => arr && arr.length > 0);
+                              const collabs = projet.collaborateurs || [];
+                              const meneur = getCollab(projet.meneur);
                               
                               return (
                                 <div key={projet.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
@@ -655,17 +594,12 @@ export default function App() {
                                   {/* Infos */}
                                   <div className="flex-1">
                                     <div className="font-medium text-gray-800">{projet.name}</div>
-                                    {projet.objectif && (
-                                      <div className="text-sm text-purple-600 mt-1">
-                                        🎯 {projet.objectif.length > 100 ? projet.objectif.substring(0, 100) + '...' : projet.objectif}
-                                      </div>
-                                    )}
                                     {projet.commentaire && (
                                       <div className="text-sm text-gray-500 mt-1 italic">
                                         💬 {projet.commentaire.length > 80 ? projet.commentaire.substring(0, 80) + '...' : projet.commentaire}
                                       </div>
                                     )}
-                                    <div className="text-sm text-gray-500 flex items-center gap-4 mt-1">
+                                    <div className="text-sm text-gray-500 flex items-center gap-4 mt-1 flex-wrap">
                                       <span>📅 S{projet.weekStart}{projet.weekEnd !== projet.weekStart ? ` → S${projet.weekEnd}` : ''}</span>
                                       <span
                                         className="px-2 py-0.5 rounded text-white text-xs"
@@ -684,56 +618,31 @@ export default function App() {
                                           <span className="text-xs text-gray-500">{projet.avancement}%</span>
                                         </span>
                                       )}
+                                      {meneur && (
+                                        <span className="text-xs">
+                                          🏅 Meneur: <strong>{meneur.name}</strong>
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                   
-                                  {/* Collaborateurs par rôle */}
-                                  <div className="flex flex-col gap-1 text-xs">
-                                    {hasAnyCollab ? (
-                                      <>
-                                        {roles.comiteIA?.length > 0 && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-purple-600">🧠</span>
-                                            {roles.comiteIA.map(id => (
-                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#8B5CF6' }}>
-                                                {getCollabName(id)}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                        {roles.equipageSprint?.length > 0 && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-blue-600">🚀</span>
-                                            {roles.equipageSprint.map(id => (
-                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#3B82F6' }}>
-                                                {getCollabName(id)}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                        {roles.leaderSprint?.length > 0 && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-yellow-600">👑</span>
-                                            {roles.leaderSprint.map(id => (
-                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#F59E0B' }}>
-                                                {getCollabName(id)}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                        {roles.directeur?.length > 0 && (
-                                          <div className="flex items-center gap-1">
-                                            <span className="text-red-600">🎯</span>
-                                            {roles.directeur.map(id => (
-                                              <span key={id} className="px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: '#EF4444' }}>
-                                                {getCollabName(id)}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        )}
-                                      </>
+                                  {/* Collaborateurs */}
+                                  <div className="flex items-center gap-1 flex-wrap max-w-xs">
+                                    {collabs.length > 0 ? (
+                                      collabs.slice(0, 4).map(collabId => (
+                                        <span
+                                          key={collabId}
+                                          className="px-2 py-1 rounded text-white text-xs"
+                                          style={{ backgroundColor: getCollabColor(collabId) }}
+                                        >
+                                          {getCollabName(collabId)}
+                                        </span>
+                                      ))
                                     ) : (
-                                      <span className="text-gray-400">Non assigné</span>
+                                      <span className="text-gray-400 text-sm">Non assigné</span>
+                                    )}
+                                    {collabs.length > 4 && (
+                                      <span className="text-xs text-gray-500">+{collabs.length - 4}</span>
                                     )}
                                   </div>
                                   
@@ -772,7 +681,7 @@ export default function App() {
       {/* ========== MODAL PROJET ========== */}
       {showProjetModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <h3 className="text-xl font-bold p-6 pb-4 border-b">
               {editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}
             </h3>
@@ -789,21 +698,6 @@ export default function App() {
                     : setNewProjet({ ...newProjet, name: e.target.value })
                   }
                   placeholder="Ex: Migration base de données"
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
-                />
-              </div>
-
-              {/* Objectif */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">🎯 Objectif</label>
-                <textarea
-                  value={editingProjet?.objectif || newProjet.objectif || ''}
-                  onChange={(e) => editingProjet
-                    ? setEditingProjet({ ...editingProjet, objectif: e.target.value })
-                    : setNewProjet({ ...newProjet, objectif: e.target.value })
-                  }
-                  placeholder="Quel est l'objectif de cette mission ?"
-                  rows={2}
                   className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
                 />
               </div>
@@ -921,59 +815,194 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Collaborateurs par rôle */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Collaborateurs par rôle</label>
-                
-                {[
-                  { key: 'comiteIA', label: '🧠 Comité IA', color: '#8B5CF6' },
-                  { key: 'equipageSprint', label: '🚀 Équipage Sprint', color: '#3B82F6' },
-                  { key: 'leaderSprint', label: '👑 Leader Sprint', color: '#F59E0B' },
-                  { key: 'directeur', label: '🎯 Directeur', color: '#EF4444' }
-                ].map(role => {
-                  const currentRoles = editingProjet?.collaborateursParRole || newProjet.collaborateursParRole || {};
-                  const selectedForRole = currentRoles[role.key] || [];
+              {/* ========== SECTION ÉQUIPE DU CYCLE ========== */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                  👥 Équipe du cycle
+                </h4>
+
+                {/* Gouvernance du cycle */}
+                <div className="bg-purple-50 rounded-lg p-4 mb-4">
+                  <h5 className="text-sm font-semibold text-purple-800 mb-3">🧭 GOUVERNANCE DU CYCLE</h5>
+                  
+                  {/* Référent Comité Stratégique IA */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      🎯 Référent Comité Stratégique IA
+                    </label>
+                    <select
+                      value={editingProjet?.referentComiteIA || newProjet.referentComiteIA || ''}
+                      onChange={(e) => editingProjet
+                        ? setEditingProjet({ ...editingProjet, referentComiteIA: e.target.value })
+                        : setNewProjet({ ...newProjet, referentComiteIA: e.target.value })
+                      }
+                      className="w-full p-2 border rounded-lg text-sm"
+                    >
+                      <option value="">-- Sélectionner --</option>
+                      {membresComiteIA.map(collab => (
+                        <option key={collab.id} value={collab.id}>
+                          {collab.name} {collab.nomComplet !== collab.name ? `(${collab.nomComplet})` : ''} - {collab.role}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Rémi, Séverine, Céline, Michel</p>
+                  </div>
+
+                  {/* Référent Commission Conformité */}
+                  <div className="mb-3">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      🔒 Référent Commission Conformité
+                    </label>
+                    <select
+                      value={editingProjet?.referentConformite || newProjet.referentConformite || ''}
+                      onChange={(e) => editingProjet
+                        ? setEditingProjet({ ...editingProjet, referentConformite: e.target.value })
+                        : setNewProjet({ ...newProjet, referentConformite: e.target.value })
+                      }
+                      className="w-full p-2 border rounded-lg text-sm"
+                    >
+                      <option value="">-- Sélectionner --</option>
+                      {membresConformite.map(collab => (
+                        <option key={collab.id} value={collab.id}>
+                          {collab.name} {collab.nomComplet !== collab.name ? `(${collab.nomComplet})` : ''} - {collab.role}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Sylvain, Emmanuel, Rémi, Stéphane D., Damien, Geoffrey</p>
+                  </div>
+
+                  {/* Meneur */}
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      🏅 Meneur (Coordinateur)
+                    </label>
+                    <select
+                      value={editingProjet?.meneur || newProjet.meneur || ''}
+                      onChange={(e) => editingProjet
+                        ? setEditingProjet({ ...editingProjet, meneur: e.target.value })
+                        : setNewProjet({ ...newProjet, meneur: e.target.value })
+                      }
+                      className="w-full p-2 border rounded-lg text-sm"
+                    >
+                      <option value="">-- Sélectionner --</option>
+                      {Object.entries(collabsParService).map(([service, collabs]) => (
+                        <optgroup key={service} label={service}>
+                          {collabs.filter(c => c.peutEtreMeneur).map(collab => (
+                            <option key={collab.id} value={collab.id}>
+                              {collab.name} - {collab.role}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">Tout collaborateur peut être meneur</p>
+                  </div>
+                </div>
+
+                {/* Équipe de cycle */}
+                <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                  <h5 className="text-sm font-semibold text-blue-800 mb-3">🏃 ÉQUIPE DE CYCLE (3-7 personnes)</h5>
+                  
+                  {/* Recherche */}
+                  <input
+                    type="text"
+                    placeholder="🔍 Rechercher un collaborateur..."
+                    value={searchCollab}
+                    onChange={(e) => setSearchCollab(e.target.value)}
+                    className="w-full p-2 border rounded-lg text-sm mb-3"
+                  />
+
+                  {/* Liste par service */}
+                  <div className="max-h-60 overflow-y-auto space-y-3">
+                    {Object.entries(collabsParService).map(([service, collabs]) => {
+                      const filteredCollabs = collabs.filter(c => 
+                        !searchCollab || 
+                        c.name.toLowerCase().includes(searchCollab.toLowerCase()) ||
+                        c.nomComplet?.toLowerCase().includes(searchCollab.toLowerCase())
+                      );
+                      if (filteredCollabs.length === 0) return null;
+                      
+                      return (
+                        <div key={service}>
+                          <div className="text-xs font-semibold text-gray-600 mb-1 flex items-center gap-2">
+                            📂 {service} ({filteredCollabs.length})
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {filteredCollabs.map(collab => {
+                              const currentCollabs = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                              const isSelected = currentCollabs.includes(collab.id);
+                              return (
+                                <button
+                                  key={collab.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = isSelected
+                                      ? currentCollabs.filter(id => id !== collab.id)
+                                      : [...currentCollabs, collab.id];
+                                    
+                                    if (editingProjet) {
+                                      setEditingProjet({ ...editingProjet, collaborateurs: updated });
+                                    } else {
+                                      setNewProjet({ ...newProjet, collaborateurs: updated });
+                                    }
+                                  }}
+                                  className={`px-2 py-1 rounded text-xs transition-all ${
+                                    isSelected
+                                      ? 'text-white'
+                                      : 'bg-white border text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                  style={isSelected ? { backgroundColor: collab.color } : {}}
+                                  title={`${collab.nomComplet || collab.name} - ${collab.role}`}
+                                >
+                                  {collab.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Compteur */}
+                  <div className="mt-3 text-xs text-gray-600">
+                    {(editingProjet?.collaborateurs || newProjet.collaborateurs || []).length} collaborateur(s) sélectionné(s)
+                    {(editingProjet?.collaborateurs || newProjet.collaborateurs || []).length < 3 && (
+                      <span className="text-orange-500 ml-2">⚠️ Minimum recommandé : 3</span>
+                    )}
+                    {(editingProjet?.collaborateurs || newProjet.collaborateurs || []).length > 7 && (
+                      <span className="text-orange-500 ml-2">⚠️ Maximum recommandé : 7</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Directeurs concernés (automatique) */}
+                {(() => {
+                  const currentCollabs = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                  const directeursConcernes = getDirecteursConcernes(currentCollabs);
+                  
+                  if (directeursConcernes.length === 0) return null;
                   
                   return (
-                    <div key={role.key} className="mb-3 p-3 bg-gray-50 rounded-lg">
-                      <div className="text-sm font-semibold mb-2" style={{ color: role.color }}>
-                        {role.label}
-                      </div>
+                    <div className="bg-gray-100 rounded-lg p-4">
+                      <h5 className="text-sm font-semibold text-gray-700 mb-2">📋 DIRECTEURS CONCERNÉS (automatique)</h5>
                       <div className="flex flex-wrap gap-2">
-                        {collaborateurs.map(collab => {
-                          const isSelected = selectedForRole.includes(collab.id);
-                          return (
-                            <button
-                              key={collab.id}
-                              type="button"
-                              onClick={() => {
-                                const updatedRole = isSelected
-                                  ? selectedForRole.filter(id => id !== collab.id)
-                                  : [...selectedForRole, collab.id];
-                                
-                                const updatedRoles = { ...currentRoles, [role.key]: updatedRole };
-                                
-                                if (editingProjet) {
-                                  setEditingProjet({ ...editingProjet, collaborateursParRole: updatedRoles });
-                                } else {
-                                  setNewProjet({ ...newProjet, collaborateursParRole: updatedRoles });
-                                }
-                              }}
-                              className={`px-2 py-1 rounded text-xs transition-all ${
-                                isSelected
-                                  ? 'text-white'
-                                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-100'
-                              }`}
-                              style={isSelected ? { backgroundColor: role.color } : {}}
-                            >
-                              {collab.name}
-                            </button>
-                          );
-                        })}
+                        {directeursConcernes.map(dir => (
+                          <span
+                            key={dir.id}
+                            className="px-3 py-1 rounded-lg text-white text-sm"
+                            style={{ backgroundColor: dir.color }}
+                          >
+                            {dir.name}
+                          </span>
+                        ))}
                       </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Déduit automatiquement des services de l'équipe sélectionnée
+                      </p>
                     </div>
                   );
-                })}
+                })()}
               </div>
 
               {/* Commentaire */}
@@ -998,6 +1027,7 @@ export default function App() {
                 onClick={() => {
                   setShowProjetModal(false);
                   setEditingProjet(null);
+                  setSearchCollab('');
                 }}
                 className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50"
               >
