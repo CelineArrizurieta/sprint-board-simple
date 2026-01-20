@@ -1,4 +1,4 @@
-// API Route Vercel pour Airtable - Sprint Board Simplifié
+// API Route Vercel pour Airtable - Sprint Board avec Tâches
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
 const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID;
 
@@ -8,7 +8,8 @@ const TABLES = {
   sprints: 'tblSFNt5dWgiU89g2',
   axes: 'tblBwHP0Ft9pkntyy',
   chantiers: 'tblIkKyzPB7u8NWzI',
-  collaborateurs: 'tblVtL5KEJQmxBra3', // Nouvelle table Collaborateurs (20 jan 2026)
+  collaborateurs: 'tblVtL5KEJQmxBra3',
+  taches: 'tblUyYKjBoTIz5YuK',
 };
 
 const getAirtableUrl = (table) => `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${table}`;
@@ -37,6 +38,26 @@ const fetchAllRecords = async (tableName, headers) => {
   return allRecords;
 };
 
+// Helper pour parser les collaborateurs
+const parseCollaborateurs = (val) => {
+  if (!val) return [];
+  try {
+    const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const allIds = [];
+      Object.values(parsed).forEach(v => {
+        if (Array.isArray(v)) allIds.push(...v);
+        else if (typeof v === 'string') allIds.push(v);
+      });
+      return [...new Set(allIds)];
+    }
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+};
+
+// Helper pour convertir les checkboxes Airtable
+const toBool = (val) => val === true || val === 'checked' || val === 'TRUE';
+
 export default async function handler(req, res) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -58,30 +79,13 @@ export default async function handler(req, res) {
 
   const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
   const tableType = searchParams.get('table') || 'items';
+  const projetId = searchParams.get('projetId');
 
   try {
     // ========== ITEMS (Projets) ==========
     if (tableType === 'items') {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.items, headers);
-        
-        // Helper pour parser les collaborateurs (peut être un objet par rôle ou un tableau simple)
-        const parseCollaborateurs = (val) => {
-          if (!val) return [];
-          try {
-            const parsed = typeof val === 'string' ? JSON.parse(val) : val;
-            // Si c'est un objet avec des rôles, extraire tous les IDs
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              const allIds = [];
-              Object.values(parsed).forEach(v => {
-                if (Array.isArray(v)) allIds.push(...v);
-                else if (typeof v === 'string') allIds.push(v);
-              });
-              return [...new Set(allIds)]; // Dédupliquer
-            }
-            return Array.isArray(parsed) ? parsed : [];
-          } catch { return []; }
-        };
         
         const items = records.map(record => ({
           id: record.id,
@@ -93,7 +97,7 @@ export default async function handler(req, res) {
           status: record.fields.Status || 'todo',
           commentaire: record.fields.Commentaire || '',
           avancement: record.fields.Avancement || 0,
-          // Nouveaux champs équipe de cycle
+          objectif: record.fields.Objectif || '',
           referentComiteIA: record.fields.ReferentComiteIA || '',
           referentConformite: record.fields.ReferentConformite || '',
           meneur: record.fields.Meneur || '',
@@ -103,7 +107,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'POST') {
-        const { name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, referentComiteIA, referentConformite, meneur } = req.body;
+        const { name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, objectif, referentComiteIA, referentConformite, meneur } = req.body;
         
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'POST',
@@ -119,6 +123,7 @@ export default async function handler(req, res) {
                 Status: status || 'todo',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
+                Objectif: objectif || '',
                 ReferentComiteIA: referentComiteIA || '',
                 ReferentConformite: referentConformite || '',
                 Meneur: meneur || '',
@@ -131,24 +136,6 @@ export default async function handler(req, res) {
         if (data.error) throw new Error(data.error.message);
 
         const record = data.records[0];
-        
-        // Helper pour parser les collaborateurs
-        const parseCollabs = (val) => {
-          if (!val) return [];
-          try {
-            const parsed = typeof val === 'string' ? JSON.parse(val) : val;
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              const allIds = [];
-              Object.values(parsed).forEach(v => {
-                if (Array.isArray(v)) allIds.push(...v);
-                else if (typeof v === 'string') allIds.push(v);
-              });
-              return [...new Set(allIds)];
-            }
-            return Array.isArray(parsed) ? parsed : [];
-          } catch { return []; }
-        };
-        
         return res.status(201).json({
           item: {
             id: record.id,
@@ -156,10 +143,11 @@ export default async function handler(req, res) {
             chantierId: record.fields.ChantierId,
             weekStart: record.fields.WeekStart,
             weekEnd: record.fields.WeekEnd,
-            collaborateurs: parseCollabs(record.fields.CollaborateursParRole),
+            collaborateurs: parseCollaborateurs(record.fields.CollaborateursParRole),
             status: record.fields.Status,
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
+            objectif: record.fields.Objectif || '',
             referentComiteIA: record.fields.ReferentComiteIA || '',
             referentConformite: record.fields.ReferentConformite || '',
             meneur: record.fields.Meneur || '',
@@ -168,7 +156,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, referentComiteIA, referentConformite, meneur } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, objectif, referentComiteIA, referentConformite, meneur } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
@@ -186,6 +174,7 @@ export default async function handler(req, res) {
                 Status: status || 'todo',
                 Commentaire: commentaire || '',
                 Avancement: avancement || 0,
+                Objectif: objectif || '',
                 ReferentComiteIA: referentComiteIA || '',
                 ReferentConformite: referentConformite || '',
                 Meneur: meneur || '',
@@ -197,23 +186,6 @@ export default async function handler(req, res) {
         const data = await response.json();
         if (data.error) throw new Error(data.error.message);
 
-        // Helper pour parser les collaborateurs
-        const parseCollabs = (val) => {
-          if (!val) return [];
-          try {
-            const parsed = typeof val === 'string' ? JSON.parse(val) : val;
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              const allIds = [];
-              Object.values(parsed).forEach(v => {
-                if (Array.isArray(v)) allIds.push(...v);
-                else if (typeof v === 'string') allIds.push(v);
-              });
-              return [...new Set(allIds)];
-            }
-            return Array.isArray(parsed) ? parsed : [];
-          } catch { return []; }
-        };
-
         const record = data.records[0];
         return res.status(200).json({
           item: {
@@ -222,10 +194,11 @@ export default async function handler(req, res) {
             chantierId: record.fields.ChantierId,
             weekStart: record.fields.WeekStart,
             weekEnd: record.fields.WeekEnd,
-            collaborateurs: parseCollabs(record.fields.CollaborateursParRole),
+            collaborateurs: parseCollaborateurs(record.fields.CollaborateursParRole),
             status: record.fields.Status,
             commentaire: record.fields.Commentaire || '',
             avancement: record.fields.Avancement || 0,
+            objectif: record.fields.Objectif || '',
             referentComiteIA: record.fields.ReferentComiteIA || '',
             referentConformite: record.fields.ReferentConformite || '',
             meneur: record.fields.Meneur || '',
@@ -238,6 +211,134 @@ export default async function handler(req, res) {
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         await fetch(`${getAirtableUrl(TABLES.items)}?records[]=${id}`, {
+          method: 'DELETE',
+          headers,
+        });
+
+        return res.status(200).json({ success: true });
+      }
+    }
+
+    // ========== TACHES ==========
+    if (tableType === 'taches') {
+      if (req.method === 'GET') {
+        const records = await fetchAllRecords(TABLES.taches, headers);
+        
+        let taches = records.map(record => ({
+          id: record.id,
+          name: record.fields['Nom de la tâche'] || record.fields.Name || '',
+          projetId: record.fields.Projet || '',
+          sprint: record.fields['Sprint/Phase'] || record.fields.Sprint || 'Backlog',
+          assigne: record.fields['Assigné'] || record.fields.Assigne || '',
+          dureeEstimee: record.fields['Durée estimée'] || record.fields.DureeEstimee || 0,
+          heuresReelles: record.fields['Heures réelles'] || record.fields.HeuresReelles || 0,
+          status: record.fields.Statut || record.fields.Status || 'todo',
+          commentaire: record.fields.Commentaire || '',
+          order: record.fields.Order || 0,
+        }));
+
+        // Filtrer par projet si spécifié
+        if (projetId) {
+          taches = taches.filter(t => t.projetId === projetId);
+        }
+
+        taches.sort((a, b) => a.order - b.order);
+        return res.status(200).json({ taches });
+      }
+
+      if (req.method === 'POST') {
+        const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
+        
+        const response = await fetch(getAirtableUrl(TABLES.taches), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            records: [{
+              fields: {
+                'Nom de la tâche': name,
+                'Projet': projetId,
+                'Sprint/Phase': sprint || 'Backlog',
+                'Assigné': assigne || '',
+                'Durée estimée': dureeEstimee || 0,
+                'Heures réelles': heuresReelles || 0,
+                'Statut': status || 'todo',
+                'Commentaire': commentaire || '',
+                'Order': order || 0,
+              }
+            }]
+          }),
+        });
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message);
+
+        const record = data.records[0];
+        return res.status(201).json({
+          tache: {
+            id: record.id,
+            name: record.fields['Nom de la tâche'] || '',
+            projetId: record.fields.Projet || '',
+            sprint: record.fields['Sprint/Phase'] || 'Backlog',
+            assigne: record.fields['Assigné'] || '',
+            dureeEstimee: record.fields['Durée estimée'] || 0,
+            heuresReelles: record.fields['Heures réelles'] || 0,
+            status: record.fields.Statut || 'todo',
+            commentaire: record.fields.Commentaire || '',
+            order: record.fields.Order || 0,
+          }
+        });
+      }
+
+      if (req.method === 'PUT' || req.method === 'PATCH') {
+        const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
+        if (!id) return res.status(400).json({ error: 'ID requis' });
+
+        const response = await fetch(getAirtableUrl(TABLES.taches), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            records: [{
+              id,
+              fields: {
+                'Nom de la tâche': name,
+                'Projet': projetId,
+                'Sprint/Phase': sprint || 'Backlog',
+                'Assigné': assigne || '',
+                'Durée estimée': dureeEstimee || 0,
+                'Heures réelles': heuresReelles || 0,
+                'Statut': status || 'todo',
+                'Commentaire': commentaire || '',
+                'Order': order || 0,
+              }
+            }]
+          }),
+        });
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message);
+
+        const record = data.records[0];
+        return res.status(200).json({
+          tache: {
+            id: record.id,
+            name: record.fields['Nom de la tâche'] || '',
+            projetId: record.fields.Projet || '',
+            sprint: record.fields['Sprint/Phase'] || 'Backlog',
+            assigne: record.fields['Assigné'] || '',
+            dureeEstimee: record.fields['Durée estimée'] || 0,
+            heuresReelles: record.fields['Heures réelles'] || 0,
+            status: record.fields.Statut || 'todo',
+            commentaire: record.fields.Commentaire || '',
+            order: record.fields.Order || 0,
+          }
+        });
+      }
+
+      if (req.method === 'DELETE') {
+        const { id } = req.body;
+        if (!id) return res.status(400).json({ error: 'ID requis' });
+
+        await fetch(`${getAirtableUrl(TABLES.taches)}?records[]=${id}`, {
           method: 'DELETE',
           headers,
         });
@@ -287,24 +388,30 @@ export default async function handler(req, res) {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.collaborateurs, headers);
         
-        // Fonction helper pour convertir les checkboxes Airtable (true ou "checked") en boolean
-        const toBool = (val) => val === true || val === 'checked' || val === 'TRUE' || val === true;
-        
-        const collaborateurs = records.map(record => ({
-          id: record.fields.Id || record.id,
-          name: record.fields.Name || '',
-          nomComplet: record.fields.NomComplet || record.fields.Name || '',
-          role: record.fields.Role || '',
-          service: record.fields.Service || '',
-          color: record.fields.Color || '#7B1FA2',
-          email: record.fields.Email || '',
-          // Champs booléens - gérer les différents formats Airtable
-          estDirecteur: toBool(record.fields.EstDirecteur),
-          estComiteStrategiqueIA: toBool(record.fields.EstComiteStrategiqueIA),
-          estCommissionConformite: toBool(record.fields.EstCommissionConformite),
-          peutEtreMeneur: record.fields.PeutEtreMeneur === false ? false : true, // Par défaut true
-          order: record.fields.Order || 0,
-        }));
+        const collaborateurs = records.map(record => {
+          // Gérer la photo (pièce jointe Airtable)
+          const photoField = record.fields.Photo;
+          let photoUrl = null;
+          if (photoField && Array.isArray(photoField) && photoField.length > 0) {
+            photoUrl = photoField[0].thumbnails?.large?.url || photoField[0].url || null;
+          }
+          
+          return {
+            id: record.fields.Id || record.id,
+            name: record.fields.Name || '',
+            nomComplet: record.fields.NomComplet || record.fields.Name || '',
+            role: record.fields.Role || '',
+            service: record.fields.Service || '',
+            color: record.fields.Color || '#7B1FA2',
+            email: record.fields.Email || '',
+            photo: photoUrl,
+            estDirecteur: toBool(record.fields.EstDirecteur),
+            estComiteStrategiqueIA: toBool(record.fields.EstComiteStrategiqueIA),
+            estCommissionConformite: toBool(record.fields.EstCommissionConformite),
+            peutEtreMeneur: record.fields.PeutEtreMeneur === false ? false : true,
+            order: record.fields.Order || 0,
+          };
+        });
 
         collaborateurs.sort((a, b) => a.order - b.order);
         return res.status(200).json({ collaborateurs });
