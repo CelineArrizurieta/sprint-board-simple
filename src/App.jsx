@@ -22,7 +22,6 @@ const generateWeeks = () => {
 
 const WEEKS = generateWeeks();
 
-// Trimestres
 const TRIMESTRES = {
   1: WEEKS.filter(w => w.num >= 1 && w.num <= 13),
   2: WEEKS.filter(w => w.num >= 14 && w.num <= 26),
@@ -30,58 +29,50 @@ const TRIMESTRES = {
   4: WEEKS.filter(w => w.num >= 40 && w.num <= 53),
 };
 
-// API URL
 const API_URL = '/api/airtable';
 
-// Statuts simplifiés
 const STATUTS = [
   { id: 'todo', name: 'À faire', color: '#3B82F6', icon: '📋' },
   { id: 'in_progress', name: 'En cours', color: '#F59E0B', icon: '🔄' },
   { id: 'done', name: 'Terminé', color: '#10B981', icon: '✅' },
 ];
 
+const SPRINTS = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Backlog'];
+
 export default function App() {
-  // Auth
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
-
-  // Data
   const [projets, setProjets] = useState([]);
   const [axes, setAxes] = useState([]);
   const [chantiers, setChantiers] = useState([]);
   const [collaborateurs, setCollaborateurs] = useState([]);
-  
-  // UI
+  const [taches, setTaches] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
   const [lastSync, setLastSync] = useState(null);
   const [activeTab, setActiveTab] = useState('planning');
   const [trimestre, setTrimestre] = useState(1);
-  
-  // Modals
+  const [selectedProjet, setSelectedProjet] = useState(null);
+  const [projetTaches, setProjetTaches] = useState([]);
+  const [loadingTaches, setLoadingTaches] = useState(false);
   const [showProjetModal, setShowProjetModal] = useState(false);
+  const [showTacheModal, setShowTacheModal] = useState(false);
   const [editingProjet, setEditingProjet] = useState(null);
+  const [editingTache, setEditingTache] = useState(null);
   const [newProjet, setNewProjet] = useState({
-    name: '',
-    chantierId: '',
-    weekStart: 1,
-    weekEnd: 1,
-    collaborateurs: [],
-    status: 'todo',
-    commentaire: '',
-    avancement: 0,
-    referentComiteIA: '',
-    referentConformite: '',
-    meneur: ''
+    name: '', chantierId: '', weekStart: 1, weekEnd: 1,
+    collaborateurs: [], status: 'todo', commentaire: '', avancement: 0,
+    objectif: '', referentComiteIA: '', referentConformite: '', meneur: ''
   });
-  
-  // Filtres
+  const [newTache, setNewTache] = useState({
+    name: '', projetId: '', sprint: 'Sprint 1', assigne: '',
+    dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: ''
+  });
   const [filtreAxe, setFiltreAxe] = useState('');
   const [filtreChantier, setFiltreChantier] = useState('');
   const [searchCollab, setSearchCollab] = useState('');
 
-  // ========== AUTH ==========
   const handleLogin = () => {
     if (passwordInput === 'ApiYou2026') {
       setIsAuthenticated(true);
@@ -97,7 +88,6 @@ export default function App() {
     }
   }, []);
 
-  // ========== API CALLS ==========
   const fetchAll = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -108,57 +98,62 @@ export default function App() {
         fetch(`${API_URL}?table=chantiers`),
         fetch(`${API_URL}?table=collaborateurs`),
       ]);
-
       const projetsData = await projetsRes.json();
       const axesData = await axesRes.json();
       const chantiersData = await chantiersRes.json();
       const collabsData = await collabsRes.json();
-
       setProjets(projetsData.items || []);
       setAxes(axesData.axes || []);
       setChantiers(chantiersData.chantiers || []);
       setCollaborateurs(collabsData.collaborateurs || []);
       setLastSync(new Date());
     } catch (err) {
-      console.error('Erreur:', err);
       setError(`Erreur de chargement: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchAll();
+  const fetchTachesForProjet = useCallback(async (projetId) => {
+    setLoadingTaches(true);
+    try {
+      const res = await fetch(`${API_URL}?table=taches&projetId=${projetId}`);
+      const data = await res.json();
+      setProjetTaches(data.taches || []);
+    } catch (err) {
+      setProjetTaches([]);
+    } finally {
+      setLoadingTaches(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) fetchAll();
   }, [isAuthenticated, fetchAll]);
 
-  // ========== CRUD PROJETS ==========
+  useEffect(() => {
+    if (selectedProjet) fetchTachesForProjet(selectedProjet.id);
+  }, [selectedProjet, fetchTachesForProjet]);
+
   const saveProjet = async (projetData) => {
     setIsSaving(true);
     try {
       const method = projetData.id ? 'PUT' : 'POST';
       const response = await fetch(`${API_URL}?table=items`, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
+        method, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(projetData),
       });
       const data = await response.json();
-      
       if (data.item) {
         if (projetData.id) {
           setProjets(prev => prev.map(p => p.id === data.item.id ? data.item : p));
+          if (selectedProjet?.id === data.item.id) setSelectedProjet(data.item);
         } else {
           setProjets(prev => [...prev, data.item]);
         }
       }
       setShowProjetModal(false);
       setEditingProjet(null);
-      setNewProjet({ 
-        name: '', chantierId: '', weekStart: 1, weekEnd: 1, 
-        collaborateurs: [], status: 'todo', commentaire: '', avancement: 0,
-        referentComiteIA: '', referentConformite: '', meneur: ''
-      });
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -172,11 +167,11 @@ export default function App() {
     setIsSaving(true);
     try {
       await fetch(`${API_URL}?table=items`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
       setProjets(prev => prev.filter(p => p.id !== id));
+      if (selectedProjet?.id === id) setSelectedProjet(null);
       setLastSync(new Date());
     } catch (err) {
       setError(`Erreur: ${err.message}`);
@@ -185,74 +180,73 @@ export default function App() {
     }
   };
 
-  // ========== HELPERS ==========
+  const saveTache = async (tacheData) => {
+    setIsSaving(true);
+    try {
+      const method = tacheData.id ? 'PUT' : 'POST';
+      const response = await fetch(`${API_URL}?table=taches`, {
+        method, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tacheData),
+      });
+      const data = await response.json();
+      if (data.tache) {
+        if (tacheData.id) {
+          setProjetTaches(prev => prev.map(t => t.id === data.tache.id ? data.tache : t));
+        } else {
+          setProjetTaches(prev => [...prev, data.tache]);
+        }
+      }
+      setShowTacheModal(false);
+      setEditingTache(null);
+    } catch (err) {
+      setError(`Erreur: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteTache = async (id) => {
+    if (!confirm('Supprimer cette tâche ?')) return;
+    try {
+      await fetch(`${API_URL}?table=taches`, {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      setProjetTaches(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      setError(`Erreur: ${err.message}`);
+    }
+  };
+
+  const toggleTacheStatus = async (tache) => {
+    const newStatus = tache.status === 'done' ? 'todo' : 'done';
+    await saveTache({ ...tache, status: newStatus });
+  };
+
   const getAxeForChantier = (chantierId) => {
     const chantier = chantiers.find(c => c.id === chantierId);
     return axes.find(a => a.id === chantier?.axeId);
   };
+  const getChantier = (chantierId) => chantiers.find(c => c.id === chantierId);
+  const getCollab = (collabId) => collaborateurs.find(c => c.id === collabId);
+  const getCollabName = (collabId) => getCollab(collabId)?.name || collabId;
+  const getCollabColor = (collabId) => getCollab(collabId)?.color || '#666';
+  const getCollabPhoto = (collabId) => getCollab(collabId)?.photo || null;
+  const getProjetsForWeek = (weekNum, chantierId) => projets.filter(p => {
+    if (p.chantierId !== chantierId) return false;
+    return weekNum >= (p.weekStart || 1) && weekNum <= (p.weekEnd || p.weekStart || 1);
+  });
+  const formatTime = (date) => date ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
 
-  const getChantier = (chantierId) => {
-    return chantiers.find(c => c.id === chantierId);
-  };
-
-  const getProjetsForWeek = (weekNum, chantierId) => {
-    return projets.filter(p => {
-      if (p.chantierId !== chantierId) return false;
-      const start = p.weekStart || 1;
-      const end = p.weekEnd || start;
-      return weekNum >= start && weekNum <= end;
-    });
-  };
-
-  const getCollabName = (collabId) => {
-    const collab = collaborateurs.find(c => c.id === collabId);
-    return collab?.name || collabId;
-  };
-
-  const getCollabColor = (collabId) => {
-    const collab = collaborateurs.find(c => c.id === collabId);
-    return collab?.color || '#666';
-  };
-
-  const getCollab = (collabId) => {
-    return collaborateurs.find(c => c.id === collabId);
-  };
-
-  const formatTime = (date) => {
-    if (!date) return '';
-    return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Filtres collaborateurs par rôle
   const membresComiteIA = collaborateurs.filter(c => c.estComiteStrategiqueIA);
   const membresConformite = collaborateurs.filter(c => c.estCommissionConformite);
-  const meneursPotentiels = collaborateurs.filter(c => c.peutEtreMeneur);
-  const directeurs = collaborateurs.filter(c => c.estDirecteur);
-
-  // Grouper collaborateurs par service
   const collabsParService = collaborateurs.reduce((acc, collab) => {
     const service = collab.service || 'Autre';
     if (!acc[service]) acc[service] = [];
     acc[service].push(collab);
     return acc;
   }, {});
-
-  // Calculer directeurs concernés à partir de l'équipe sélectionnée
-  const getDirecteursConcernes = (equipeIds) => {
-    const servicesImpliques = new Set();
-    equipeIds.forEach(id => {
-      const collab = getCollab(id);
-      if (collab?.service) servicesImpliques.add(collab.service);
-    });
-    return directeurs.filter(d => servicesImpliques.has(d.service));
-  };
-
-  // Chantiers filtrés par axe
-  const chantiersFiltres = filtreAxe
-    ? chantiers.filter(c => c.axeId === filtreAxe)
-    : chantiers;
-
-  // Projets filtrés
+  const chantiersFiltres = filtreAxe ? chantiers.filter(c => c.axeId === filtreAxe) : chantiers;
   const projetsFiltres = projets.filter(p => {
     if (filtreAxe) {
       const chantier = getChantier(p.chantierId);
@@ -261,10 +255,25 @@ export default function App() {
     if (filtreChantier && p.chantierId !== filtreChantier) return false;
     return true;
   });
-
   const currentWeeks = TRIMESTRES[trimestre];
+  const getTachesBySprint = (sprint) => projetTaches.filter(t => t.sprint === sprint);
+  const getSprintStats = (sprint) => {
+    const sprintTaches = getTachesBySprint(sprint);
+    const total = sprintTaches.length;
+    const done = sprintTaches.filter(t => t.status === 'done').length;
+    const heuresEstimees = sprintTaches.reduce((sum, t) => sum + (t.dureeEstimee || 0), 0);
+    const heuresReelles = sprintTaches.reduce((sum, t) => sum + (t.heuresReelles || 0), 0);
+    return { total, done, heuresEstimees, heuresReelles, progress: total > 0 ? Math.round((done / total) * 100) : 0 };
+  };
+  const getProjetStats = () => {
+    const total = projetTaches.length;
+    const done = projetTaches.filter(t => t.status === 'done').length;
+    const heuresEstimees = projetTaches.reduce((sum, t) => sum + (t.dureeEstimee || 0), 0);
+    const heuresReelles = projetTaches.reduce((sum, t) => sum + (t.heuresReelles || 0), 0);
+    return { total, done, heuresEstimees, heuresReelles, progress: total > 0 ? Math.round((done / total) * 100) : 0 };
+  };
 
-  // ========== ÉCRAN LOGIN ==========
+  // LOGIN SCREEN
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 flex items-center justify-center">
@@ -274,52 +283,282 @@ export default function App() {
             <h1 className="text-2xl font-bold text-gray-800 mt-4">Sprint Board COMEX 2026</h1>
             <p className="text-gray-500">Plan d'action stratégique API & YOU</p>
           </div>
-          <input
-            type="password"
-            value={passwordInput}
-            onChange={(e) => setPasswordInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            placeholder="Mot de passe"
-            className="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-purple-500 focus:outline-none"
-          />
-          <button
-            onClick={handleLogin}
-            className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium hover:bg-purple-700 transition-colors"
-          >
-            Accéder
-          </button>
+          <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleLogin()} placeholder="Mot de passe"
+            className="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-purple-500 focus:outline-none" />
+          <button onClick={handleLogin} className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium hover:bg-purple-700">Accéder</button>
         </div>
       </div>
     );
   }
 
-  // ========== APP PRINCIPALE ==========
+  // SPRINT VIEW
+  if (selectedProjet) {
+    const axe = getAxeForChantier(selectedProjet.chantierId);
+    const chantier = getChantier(selectedProjet.chantierId);
+    const stats = getProjetStats();
+    const meneur = getCollab(selectedProjet.meneur);
+    const referentIA = getCollab(selectedProjet.referentComiteIA);
+    const referentConf = getCollab(selectedProjet.referentConformite);
+
+    return (
+      <div className="min-h-screen bg-gray-100">
+        <div className="bg-gradient-to-r from-purple-700 to-blue-600 text-white p-4 shadow-lg">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSelectedProjet(null)} className="p-2 hover:bg-white/20 rounded-lg">← Retour</button>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 text-purple-200 text-sm">
+                <span>{axe?.icon}</span><span>{axe?.name}</span><span>•</span><span>{chantier?.name}</span>
+              </div>
+              <h1 className="text-2xl font-bold">{selectedProjet.name}</h1>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-purple-200">Semaines {selectedProjet.weekStart} → {selectedProjet.weekEnd}</div>
+              <div className="flex items-center gap-2 mt-1">
+                <div className="w-32 h-2 bg-white/30 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-400 rounded-full" style={{ width: `${stats.progress}%` }} />
+                </div>
+                <span className="text-sm font-medium">{stats.progress}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="lg:col-span-1 space-y-4">
+              {selectedProjet.objectif && (
+                <div className="bg-white rounded-lg shadow p-4">
+                  <h3 className="font-semibold text-gray-800 mb-2">🎯 Objectif</h3>
+                  <p className="text-gray-600 text-sm">{selectedProjet.objectif}</p>
+                </div>
+              )}
+              <div className="bg-white rounded-lg shadow p-4">
+                <h3 className="font-semibold text-gray-800 mb-3">👥 Équipe du projet</h3>
+                {[{label: '🏅 Meneur', person: meneur}, {label: '🎯 Référent Comité IA', person: referentIA}, {label: '🔒 Référent Conformité', person: referentConf}]
+                  .filter(({person}) => person).map(({label, person}) => (
+                  <div key={label} className="mb-3">
+                    <div className="text-xs text-gray-500 mb-1">{label}</div>
+                    <div className="flex items-center gap-2">
+                      {person.photo ? <img src={person.photo} alt={person.name} className="w-8 h-8 rounded-full object-cover" />
+                        : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium" style={{ backgroundColor: person.color }}>{person.name.charAt(0)}</div>}
+                      <div><div className="font-medium text-sm">{person.name}</div><div className="text-xs text-gray-500">{person.role}</div></div>
+                    </div>
+                  </div>
+                ))}
+                {selectedProjet.collaborateurs?.length > 0 && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">🏃 Équipe</div>
+                    <div className="flex flex-wrap gap-1">
+                      {selectedProjet.collaborateurs.map(collabId => {
+                        const collab = getCollab(collabId);
+                        if (!collab) return null;
+                        return (
+                          <div key={collabId} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-1">
+                            {collab.photo ? <img src={collab.photo} alt={collab.name} className="w-5 h-5 rounded-full object-cover" />
+                              : <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: collab.color }}>{collab.name.charAt(0)}</div>}
+                            <span className="text-xs">{collab.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <h3 className="font-semibold text-gray-800 mb-3">📊 Statistiques</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Tâches</span><span className="font-medium">{stats.done}/{stats.total}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Heures estimées</span><span className="font-medium">{stats.heuresEstimees}h</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Heures réelles</span><span className="font-medium">{stats.heuresReelles}h</span></div>
+                </div>
+              </div>
+              {selectedProjet.commentaire && (
+                <div className="bg-white rounded-lg shadow p-4">
+                  <h3 className="font-semibold text-gray-800 mb-2">💬 Notes</h3>
+                  <p className="text-gray-600 text-sm">{selectedProjet.commentaire}</p>
+                </div>
+              )}
+              <div className="bg-white rounded-lg shadow p-4">
+                <button onClick={() => { setEditingProjet(selectedProjet); setShowProjetModal(true); }}
+                  className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">✏️ Modifier le projet</button>
+              </div>
+            </div>
+
+            <div className="lg:col-span-3">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">📋 Feuille de route</h2>
+                <button onClick={() => { setNewTache({ name: '', projetId: selectedProjet.id, sprint: 'Sprint 1', assigne: '', dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '' }); setEditingTache(null); setShowTacheModal(true); }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">➕ Nouvelle tâche</button>
+              </div>
+              {loadingTaches ? (
+                <div className="text-center py-12"><div className="text-4xl mb-4">⏳</div><p className="text-gray-600">Chargement des tâches...</p></div>
+              ) : (
+                <div className="space-y-6">
+                  {SPRINTS.map(sprint => {
+                    const sprintTaches = getTachesBySprint(sprint);
+                    const sprintStats = getSprintStats(sprint);
+                    return (
+                      <div key={sprint} className="bg-white rounded-lg shadow overflow-hidden">
+                        <div className="bg-gray-800 text-white p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-bold">{sprint}</span>
+                            <span className="bg-white/20 px-2 py-0.5 rounded text-sm">{sprintStats.done}/{sprintStats.total} tâches</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm">
+                            <span>⏱️ {sprintStats.heuresEstimees}h estimées</span>
+                            <span>✅ {sprintStats.heuresReelles}h réelles</span>
+                            <div className="flex items-center gap-2">
+                              <div className="w-20 h-2 bg-white/30 rounded-full overflow-hidden">
+                                <div className="h-full bg-green-400 rounded-full" style={{ width: `${sprintStats.progress}%` }} />
+                              </div>
+                              <span>{sprintStats.progress}%</span>
+                            </div>
+                          </div>
+                        </div>
+                        {sprintTaches.length === 0 ? (
+                          <div className="p-8 text-center text-gray-400">Aucune tâche dans ce sprint</div>
+                        ) : (
+                          <div className="divide-y">
+                            {sprintTaches.map(tache => {
+                              const assigne = getCollab(tache.assigne);
+                              return (
+                                <div key={tache.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
+                                  <button onClick={() => toggleTacheStatus(tache)}
+                                    className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${tache.status === 'done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-500'}`}>
+                                    {tache.status === 'done' && '✓'}
+                                  </button>
+                                  <div className="flex-1">
+                                    <div className={`font-medium ${tache.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
+                                    {tache.commentaire && <div className="text-sm text-gray-500 mt-1">{tache.commentaire}</div>}
+                                  </div>
+                                  <div className="text-sm text-gray-500 flex items-center gap-2">
+                                    <span>⏱️ {tache.dureeEstimee}h</span><span>✅ {tache.heuresReelles}h</span>
+                                  </div>
+                                  {assigne ? (
+                                    <div className="flex items-center gap-2">
+                                      {assigne.photo ? <img src={assigne.photo} alt={assigne.name} className="w-8 h-8 rounded-full object-cover" />
+                                        : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium" style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>}
+                                      <span className="text-sm text-gray-600">{assigne.name}</span>
+                                    </div>
+                                  ) : <span className="text-sm text-gray-400">Non assigné</span>}
+                                  <div className="flex gap-1">
+                                    <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded">✏️</button>
+                                    <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded">🗑️</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {showTacheModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+              <h3 className="text-xl font-bold p-6 pb-4 border-b">{editingTache ? '✏️ Modifier la tâche' : '➕ Nouvelle tâche'}</h3>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la tâche *</label>
+                  <input type="text" value={editingTache?.name || newTache.name}
+                    onChange={(e) => editingTache ? setEditingTache({ ...editingTache, name: e.target.value }) : setNewTache({ ...newTache, name: e.target.value })}
+                    className="w-full p-3 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Sprint/Phase</label>
+                  <select value={editingTache?.sprint || newTache.sprint}
+                    onChange={(e) => editingTache ? setEditingTache({ ...editingTache, sprint: e.target.value }) : setNewTache({ ...newTache, sprint: e.target.value })}
+                    className="w-full p-3 border rounded-lg">
+                    {SPRINTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigné à</label>
+                  <select value={editingTache?.assigne || newTache.assigne}
+                    onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
+                    className="w-full p-3 border rounded-lg">
+                    <option value="">-- Non assigné --</option>
+                    {Object.entries(collabsParService).map(([service, collabs]) => (
+                      <optgroup key={service} label={service}>
+                        {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Durée estimée (h)</label>
+                    <input type="number" min="0" step="0.5" value={editingTache?.dureeEstimee || newTache.dureeEstimee}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dureeEstimee: parseFloat(e.target.value) || 0 }) : setNewTache({ ...newTache, dureeEstimee: parseFloat(e.target.value) || 0 })}
+                      className="w-full p-3 border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Heures réelles</label>
+                    <input type="number" min="0" step="0.5" value={editingTache?.heuresReelles || newTache.heuresReelles}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, heuresReelles: parseFloat(e.target.value) || 0 }) : setNewTache({ ...newTache, heuresReelles: parseFloat(e.target.value) || 0 })}
+                      className="w-full p-3 border rounded-lg" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                  <div className="flex gap-2">
+                    {STATUTS.map(statut => (
+                      <button key={statut.id} type="button"
+                        onClick={() => editingTache ? setEditingTache({ ...editingTache, status: statut.id }) : setNewTache({ ...newTache, status: statut.id })}
+                        className={`flex-1 p-3 rounded-lg border-2 ${(editingTache?.status || newTache.status) === statut.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
+                        <div className="text-xl mb-1">{statut.icon}</div>
+                        <div className="text-xs font-medium">{statut.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                  <textarea value={editingTache?.commentaire || newTache.commentaire}
+                    onChange={(e) => editingTache ? setEditingTache({ ...editingTache, commentaire: e.target.value }) : setNewTache({ ...newTache, commentaire: e.target.value })}
+                    rows={2} className="w-full p-3 border rounded-lg" />
+                </div>
+              </div>
+              <div className="flex gap-3 p-6 pt-4 border-t">
+                <button onClick={() => { setShowTacheModal(false); setEditingTache(null); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
+                <button onClick={() => {
+                  const data = editingTache || { ...newTache, projetId: selectedProjet.id };
+                  if (!data.name) { alert('Veuillez remplir le nom'); return; }
+                  saveTache(data);
+                }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                  {isSaving ? '⏳...' : (editingTache ? 'Modifier' : 'Créer')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // MAIN APP
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Header */}
       <div className="bg-gradient-to-r from-purple-700 to-blue-600 text-white p-4 shadow-lg">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-4">
             <span className="text-4xl">🚀</span>
             <div>
               <h1 className="text-2xl font-bold">Sprint Board COMEX 2026</h1>
-              <p className="text-purple-200 text-sm">
-                Plan d'action stratégique API & YOU
-                {lastSync && <span className="ml-2">• Sync {formatTime(lastSync)}</span>}
-              </p>
+              <p className="text-purple-200 text-sm">Plan d'action stratégique API & YOU {lastSync && <span>• Sync {formatTime(lastSync)}</span>}</p>
             </div>
           </div>
-          <button
-            onClick={fetchAll}
-            disabled={isLoading}
-            className="px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
-          >
-            {isLoading ? '⏳' : '🔄'} Sync
-          </button>
+          <button onClick={fetchAll} disabled={isLoading} className="px-4 py-2 bg-white/20 rounded-lg hover:bg-white/30">{isLoading ? '⏳' : '🔄'} Sync</button>
         </div>
       </div>
 
-      {/* Erreur */}
       {error && (
         <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 flex justify-between">
           <span>⚠️ {error}</span>
@@ -327,75 +566,34 @@ export default function App() {
         </div>
       )}
 
-      {/* Tabs */}
       <div className="bg-white shadow-sm border-b">
         <div className="flex">
-          <button
-            onClick={() => setActiveTab('planning')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'planning' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            📊 Planning Visuel
-          </button>
-          <button
-            onClick={() => setActiveTab('projets')}
-            className={`px-6 py-3 font-medium transition-colors ${
-              activeTab === 'projets' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            📋 Gestion des Projets
-          </button>
-          <div className="ml-auto px-4 py-3 text-sm text-gray-500">
-            {projets.length} projet(s) • {chantiers.length} chantier(s) • {collaborateurs.length} collaborateur(s)
-          </div>
+          <button onClick={() => setActiveTab('planning')} className={`px-6 py-3 font-medium ${activeTab === 'planning' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>📊 Planning Visuel</button>
+          <button onClick={() => setActiveTab('projets')} className={`px-6 py-3 font-medium ${activeTab === 'projets' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>📋 Gestion des Projets</button>
+          <div className="ml-auto px-4 py-3 text-sm text-gray-500">{projets.length} projet(s) • {chantiers.length} chantier(s)</div>
         </div>
       </div>
 
       <div className="p-4">
         {isLoading && projets.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-4xl mb-4">⏳</div>
-            <p className="text-gray-600">Chargement des données...</p>
-          </div>
+          <div className="text-center py-12"><div className="text-4xl mb-4">⏳</div><p className="text-gray-600">Chargement...</p></div>
         ) : (
           <>
-            {/* ========== ONGLET PLANNING ========== */}
             {activeTab === 'planning' && (
               <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-                {/* Contrôles */}
                 <div className="flex items-center justify-between p-4 bg-gray-50 border-b">
                   <div className="flex items-center gap-4">
                     <span className="font-medium text-gray-700">Trimestre :</span>
                     {[1, 2, 3, 4].map(t => (
-                      <button
-                        key={t}
-                        onClick={() => setTrimestre(t)}
-                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                          trimestre === t
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-white border hover:bg-gray-100'
-                        }`}
-                      >
-                        T{t}
-                      </button>
+                      <button key={t} onClick={() => setTrimestre(t)}
+                        className={`px-4 py-2 rounded-lg font-medium ${trimestre === t ? 'bg-purple-600 text-white' : 'bg-white border hover:bg-gray-100'}`}>T{t}</button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={filtreAxe}
-                      onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }}
-                      className="p-2 border rounded-lg"
-                    >
-                      <option value="">Tous les axes</option>
-                      {axes.map(axe => (
-                        <option key={axe.id} value={axe.id}>{axe.icon} {axe.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <select value={filtreAxe} onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }} className="p-2 border rounded-lg">
+                    <option value="">Tous les axes</option>
+                    {axes.map(axe => <option key={axe.id} value={axe.id}>{axe.icon} {axe.name}</option>)}
+                  </select>
                 </div>
-
-                {/* Grille Planning */}
                 <div className="overflow-auto max-h-[70vh]">
                   <table className="w-full border-collapse text-xs">
                     <thead className="sticky top-0 z-20">
@@ -412,79 +610,36 @@ export default function App() {
                     <tbody>
                       {axes.filter(a => !filtreAxe || a.id === filtreAxe).map(axe => (
                         <React.Fragment key={axe.id}>
-                          {/* En-tête Axe */}
                           <tr style={{ backgroundColor: axe.color }}>
-                            <td
-                              className="p-2 font-bold text-white sticky left-0"
-                              style={{ backgroundColor: axe.color }}
-                              colSpan={currentWeeks.length + 1}
-                            >
-                              {axe.icon} {axe.name}
-                            </td>
+                            <td className="p-2 font-bold text-white sticky left-0" style={{ backgroundColor: axe.color }} colSpan={currentWeeks.length + 1}>{axe.icon} {axe.name}</td>
                           </tr>
-                          
-                          {/* Chantiers de l'axe */}
-                          {chantiers
-                            .filter(c => c.axeId === axe.id)
-                            .map(chantier => (
-                              <tr key={chantier.id} className="border-b hover:bg-gray-50">
-                                <td className="p-2 text-sm font-medium sticky left-0 bg-white border-r">
-                                  {chantier.name}
-                                </td>
-                                {currentWeeks.map(week => {
-                                  const weekProjets = getProjetsForWeek(week.num, chantier.id);
-                                  return (
-                                    <td
-                                      key={week.num}
-                                      className="p-0 border-l cursor-pointer hover:bg-purple-50 transition-colors relative"
-                                      onClick={() => {
-                                        setNewProjet({
-                                          name: '',
-                                          chantierId: chantier.id,
-                                          weekStart: week.num,
-                                          weekEnd: week.num,
-                                          collaborateurs: [],
-                                          status: 'todo',
-                                          commentaire: '',
-                                          avancement: 0,
-                                          referentComiteIA: '',
-                                          referentConformite: '',
-                                          meneur: ''
-                                        });
-                                        setEditingProjet(null);
-                                        setShowProjetModal(true);
-                                      }}
-                                    >
-                                      {weekProjets.map(projet => {
-                                        const statut = STATUTS.find(s => s.id === projet.status);
-                                        return (
-                                          <div
-                                            key={projet.id}
-                                            className="text-[9px] p-1 m-0.5 rounded text-white truncate"
-                                            style={{ backgroundColor: statut?.color || '#666' }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setEditingProjet(projet);
-                                              setShowProjetModal(true);
-                                            }}
-                                            title={`${projet.name} (S${projet.weekStart}-S${projet.weekEnd})`}
-                                          >
-                                            {projet.name}
-                                          </div>
-                                        );
-                                      })}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
+                          {chantiers.filter(c => c.axeId === axe.id).map(chantier => (
+                            <tr key={chantier.id} className="border-b hover:bg-gray-50">
+                              <td className="p-2 text-sm font-medium sticky left-0 bg-white border-r">{chantier.name}</td>
+                              {currentWeeks.map(week => {
+                                const weekProjets = getProjetsForWeek(week.num, chantier.id);
+                                return (
+                                  <td key={week.num} className="p-0 border-l cursor-pointer hover:bg-purple-50"
+                                    onClick={() => { setNewProjet({ ...newProjet, chantierId: chantier.id, weekStart: week.num, weekEnd: week.num }); setEditingProjet(null); setShowProjetModal(true); }}>
+                                    {weekProjets.map(projet => {
+                                      const statut = STATUTS.find(s => s.id === projet.status);
+                                      return (
+                                        <div key={projet.id} className="text-[9px] p-1 m-0.5 rounded text-white truncate cursor-pointer hover:opacity-80"
+                                          style={{ backgroundColor: statut?.color || '#666' }}
+                                          onClick={(e) => { e.stopPropagation(); setSelectedProjet(projet); }}
+                                          title={`🔍 ${projet.name}`}>🔍 {projet.name}</div>
+                                      );
+                                    })}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
                         </React.Fragment>
                       ))}
                     </tbody>
                   </table>
                 </div>
-
-                {/* Légende */}
                 <div className="p-4 bg-gray-50 border-t flex items-center gap-6">
                   <span className="font-medium text-gray-700">Légende :</span>
                   {STATUTS.map(statut => (
@@ -493,559 +648,214 @@ export default function App() {
                       <span className="text-sm">{statut.icon} {statut.name}</span>
                     </div>
                   ))}
+                  <span className="text-sm text-gray-500 ml-4">🔍 Cliquez sur un projet pour voir le détail Sprint</span>
                 </div>
               </div>
             )}
 
-            {/* ========== ONGLET GESTION PROJETS ========== */}
             {activeTab === 'projets' && (
               <div className="space-y-4">
-                {/* Filtres et bouton ajouter */}
                 <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <select
-                      value={filtreAxe}
-                      onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }}
-                      className="p-2 border rounded-lg"
-                    >
+                    <select value={filtreAxe} onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }} className="p-2 border rounded-lg">
                       <option value="">Tous les axes</option>
-                      {axes.map(axe => (
-                        <option key={axe.id} value={axe.id}>{axe.icon} {axe.name}</option>
-                      ))}
+                      {axes.map(axe => <option key={axe.id} value={axe.id}>{axe.icon} {axe.name}</option>)}
                     </select>
-                    <select
-                      value={filtreChantier}
-                      onChange={(e) => setFiltreChantier(e.target.value)}
-                      className="p-2 border rounded-lg"
-                    >
+                    <select value={filtreChantier} onChange={(e) => setFiltreChantier(e.target.value)} className="p-2 border rounded-lg">
                       <option value="">Tous les chantiers</option>
-                      {chantiersFiltres.map(ch => (
-                        <option key={ch.id} value={ch.id}>{ch.name}</option>
-                      ))}
+                      {chantiersFiltres.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                     </select>
                   </div>
-                  <button
-                    onClick={() => {
-                      setNewProjet({
-                        name: '',
-                        chantierId: chantiers[0]?.id || '',
-                        weekStart: 1,
-                        weekEnd: 1,
-                        collaborateurs: [],
-                        status: 'todo',
-                        commentaire: '',
-                        avancement: 0,
-                        referentComiteIA: '',
-                        referentConformite: '',
-                        meneur: ''
-                      });
-                      setEditingProjet(null);
-                      setShowProjetModal(true);
-                    }}
-                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-                  >
-                    ➕ Nouveau projet
-                  </button>
+                  <button onClick={() => { setNewProjet({ name: '', chantierId: chantiers[0]?.id || '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo', commentaire: '', avancement: 0, objectif: '', referentComiteIA: '', referentConformite: '', meneur: '' }); setEditingProjet(null); setShowProjetModal(true); }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">➕ Nouveau projet</button>
                 </div>
-
-                {/* Liste par chantier */}
-                {(filtreChantier ? [chantiers.find(c => c.id === filtreChantier)] : chantiersFiltres)
-                  .filter(Boolean)
-                  .map(chantier => {
-                    const axe = getAxeForChantier(chantier.id);
-                    const chantierProjets = projetsFiltres.filter(p => p.chantierId === chantier.id);
-                    
-                    if (chantierProjets.length === 0 && filtreChantier !== chantier.id) return null;
-                    
-                    return (
-                      <div key={chantier.id} className="bg-white rounded-lg shadow overflow-hidden">
-                        {/* En-tête chantier */}
-                        <div
-                          className="p-3 text-white font-bold flex items-center justify-between"
-                          style={{ backgroundColor: axe?.color || '#666' }}
-                        >
-                          <span>{axe?.icon} {chantier.name}</span>
-                          <span className="text-sm font-normal opacity-80">
-                            {chantierProjets.length} projet(s)
-                          </span>
-                        </div>
-                        
-                        {/* Liste projets */}
-                        {chantierProjets.length === 0 ? (
-                          <div className="p-8 text-center text-gray-400">
-                            Aucun projet dans ce chantier
-                          </div>
-                        ) : (
-                          <div className="divide-y">
-                            {chantierProjets.map(projet => {
-                              const statut = STATUTS.find(s => s.id === projet.status);
-                              const collabs = projet.collaborateurs || [];
-                              const meneur = getCollab(projet.meneur);
-                              
-                              return (
-                                <div key={projet.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
-                                  {/* Statut */}
-                                  <div
-                                    className="w-3 h-12 rounded"
-                                    style={{ backgroundColor: statut?.color }}
-                                    title={statut?.name}
-                                  />
-                                  
-                                  {/* Infos */}
-                                  <div className="flex-1">
-                                    <div className="font-medium text-gray-800">{projet.name}</div>
-                                    {projet.commentaire && (
-                                      <div className="text-sm text-gray-500 mt-1 italic">
-                                        💬 {projet.commentaire.length > 80 ? projet.commentaire.substring(0, 80) + '...' : projet.commentaire}
-                                      </div>
-                                    )}
-                                    <div className="text-sm text-gray-500 flex items-center gap-4 mt-1 flex-wrap">
-                                      <span>📅 S{projet.weekStart}{projet.weekEnd !== projet.weekStart ? ` → S${projet.weekEnd}` : ''}</span>
-                                      <span
-                                        className="px-2 py-0.5 rounded text-white text-xs"
-                                        style={{ backgroundColor: statut?.color }}
-                                      >
-                                        {statut?.icon} {statut?.name}
-                                      </span>
-                                      {projet.avancement > 0 && (
-                                        <span className="flex items-center gap-1">
-                                          <div className="w-16 h-2 bg-gray-200 rounded-full overflow-hidden">
-                                            <div 
-                                              className="h-full bg-green-500 rounded-full"
-                                              style={{ width: `${projet.avancement}%` }}
-                                            />
-                                          </div>
-                                          <span className="text-xs text-gray-500">{projet.avancement}%</span>
-                                        </span>
-                                      )}
-                                      {meneur && (
-                                        <span className="text-xs">
-                                          🏅 Meneur: <strong>{meneur.name}</strong>
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  
-                                  {/* Collaborateurs */}
-                                  <div className="flex items-center gap-1 flex-wrap max-w-xs">
-                                    {collabs.length > 0 ? (
-                                      collabs.slice(0, 4).map(collabId => (
-                                        <span
-                                          key={collabId}
-                                          className="px-2 py-1 rounded text-white text-xs"
-                                          style={{ backgroundColor: getCollabColor(collabId) }}
-                                        >
-                                          {getCollabName(collabId)}
-                                        </span>
-                                      ))
-                                    ) : (
-                                      <span className="text-gray-400 text-sm">Non assigné</span>
-                                    )}
-                                    {collabs.length > 4 && (
-                                      <span className="text-xs text-gray-500">+{collabs.length - 4}</span>
-                                    )}
-                                  </div>
-                                  
-                                  {/* Actions */}
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => {
-                                        setEditingProjet(projet);
-                                        setShowProjetModal(true);
-                                      }}
-                                      className="p-2 text-blue-500 hover:bg-blue-50 rounded"
-                                    >
-                                      ✏️
-                                    </button>
-                                    <button
-                                      onClick={() => deleteProjet(projet.id)}
-                                      className="p-2 text-red-500 hover:bg-red-50 rounded"
-                                    >
-                                      🗑️
-                                    </button>
+                {(filtreChantier ? [chantiers.find(c => c.id === filtreChantier)] : chantiersFiltres).filter(Boolean).map(chantier => {
+                  const axe = getAxeForChantier(chantier.id);
+                  const chantierProjets = projetsFiltres.filter(p => p.chantierId === chantier.id);
+                  if (chantierProjets.length === 0 && filtreChantier !== chantier.id) return null;
+                  return (
+                    <div key={chantier.id} className="bg-white rounded-lg shadow overflow-hidden">
+                      <div className="p-3 text-white font-bold flex items-center justify-between" style={{ backgroundColor: axe?.color || '#666' }}>
+                        <span>{axe?.icon} {chantier.name}</span>
+                        <span className="text-sm font-normal opacity-80">{chantierProjets.length} projet(s)</span>
+                      </div>
+                      {chantierProjets.length === 0 ? (
+                        <div className="p-8 text-center text-gray-400">Aucun projet</div>
+                      ) : (
+                        <div className="divide-y">
+                          {chantierProjets.map(projet => {
+                            const statut = STATUTS.find(s => s.id === projet.status);
+                            return (
+                              <div key={projet.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
+                                <div className="w-3 h-12 rounded" style={{ backgroundColor: statut?.color }} title={statut?.name} />
+                                <div className="flex-1">
+                                  <div className="font-medium text-gray-800">{projet.name}</div>
+                                  <div className="text-sm text-gray-500 flex items-center gap-4 mt-1">
+                                    <span>📅 S{projet.weekStart}{projet.weekEnd !== projet.weekStart ? ` → S${projet.weekEnd}` : ''}</span>
+                                    <span className="px-2 py-0.5 rounded text-white text-xs" style={{ backgroundColor: statut?.color }}>{statut?.icon} {statut?.name}</span>
                                   </div>
                                 </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                                <div className="flex items-center gap-1">
+                                  {projet.collaborateurs?.slice(0, 3).map(collabId => {
+                                    const collab = getCollab(collabId);
+                                    if (!collab) return null;
+                                    return collab.photo ? 
+                                      <img key={collabId} src={collab.photo} alt={collab.name} className="w-8 h-8 rounded-full object-cover" title={collab.name} />
+                                      : <div key={collabId} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: collab.color }} title={collab.name}>{collab.name.charAt(0)}</div>;
+                                  })}
+                                  {projet.collaborateurs?.length > 3 && <span className="text-xs text-gray-500">+{projet.collaborateurs.length - 3}</span>}
+                                </div>
+                                <div className="flex gap-1">
+                                  <button onClick={() => setSelectedProjet(projet)} className="p-2 text-purple-500 hover:bg-purple-50 rounded" title="Voir Sprint">🔍</button>
+                                  <button onClick={() => { setEditingProjet(projet); setShowProjetModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded">✏️</button>
+                                  <button onClick={() => deleteProjet(projet.id)} className="p-2 text-red-500 hover:bg-red-50 rounded">🗑️</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* ========== MODAL PROJET ========== */}
       {showProjetModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <h3 className="text-xl font-bold p-6 pb-4 border-b">
-              {editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}
-            </h3>
-            
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <h3 className="text-xl font-bold p-6 pb-4 border-b">{editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}</h3>
             <div className="overflow-y-auto flex-1 p-6 space-y-4">
-              {/* Nom */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nom du projet *</label>
-                <input
-                  type="text"
-                  value={editingProjet?.name || newProjet.name}
-                  onChange={(e) => editingProjet
-                    ? setEditingProjet({ ...editingProjet, name: e.target.value })
-                    : setNewProjet({ ...newProjet, name: e.target.value })
-                  }
-                  placeholder="Ex: Migration base de données"
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
-                />
+                <input type="text" value={editingProjet?.name || newProjet.name}
+                  onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, name: e.target.value }) : setNewProjet({ ...newProjet, name: e.target.value })}
+                  className="w-full p-3 border rounded-lg" />
               </div>
-
-              {/* Chantier */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Objectif</label>
+                <textarea value={editingProjet?.objectif || newProjet.objectif}
+                  onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, objectif: e.target.value }) : setNewProjet({ ...newProjet, objectif: e.target.value })}
+                  rows={2} className="w-full p-3 border rounded-lg" placeholder="Quel est l'objectif de ce projet ?" />
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Chantier *</label>
-                <select
-                  value={editingProjet?.chantierId || newProjet.chantierId}
-                  onChange={(e) => editingProjet
-                    ? setEditingProjet({ ...editingProjet, chantierId: e.target.value })
-                    : setNewProjet({ ...newProjet, chantierId: e.target.value })
-                  }
-                  className="w-full p-3 border rounded-lg"
-                >
+                <select value={editingProjet?.chantierId || newProjet.chantierId}
+                  onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, chantierId: e.target.value }) : setNewProjet({ ...newProjet, chantierId: e.target.value })}
+                  className="w-full p-3 border rounded-lg">
                   <option value="">-- Sélectionner --</option>
                   {axes.map(axe => (
                     <optgroup key={axe.id} label={`${axe.icon} ${axe.name}`}>
-                      {chantiers.filter(c => c.axeId === axe.id).map(ch => (
-                        <option key={ch.id} value={ch.id}>{ch.name}</option>
-                      ))}
+                      {chantiers.filter(c => c.axeId === axe.id).map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                     </optgroup>
                   ))}
                 </select>
               </div>
-
-              {/* Semaines */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Semaine début</label>
-                  <select
-                    value={editingProjet?.weekStart || newProjet.weekStart}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      if (editingProjet) {
-                        setEditingProjet({ ...editingProjet, weekStart: val, weekEnd: Math.max(val, editingProjet.weekEnd || val) });
-                      } else {
-                        setNewProjet({ ...newProjet, weekStart: val, weekEnd: Math.max(val, newProjet.weekEnd) });
-                      }
-                    }}
-                    className="w-full p-3 border rounded-lg"
-                  >
-                    {WEEKS.map(w => (
-                      <option key={w.num} value={w.num}>S{w.num} ({w.dates})</option>
-                    ))}
+                  <select value={editingProjet?.weekStart || newProjet.weekStart}
+                    onChange={(e) => { const val = parseInt(e.target.value); editingProjet ? setEditingProjet({ ...editingProjet, weekStart: val, weekEnd: Math.max(val, editingProjet.weekEnd || val) }) : setNewProjet({ ...newProjet, weekStart: val, weekEnd: Math.max(val, newProjet.weekEnd) }); }}
+                    className="w-full p-3 border rounded-lg">
+                    {WEEKS.map(w => <option key={w.num} value={w.num}>S{w.num} ({w.dates})</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Semaine fin</label>
-                  <select
-                    value={editingProjet?.weekEnd || newProjet.weekEnd}
-                    onChange={(e) => editingProjet
-                      ? setEditingProjet({ ...editingProjet, weekEnd: parseInt(e.target.value) })
-                      : setNewProjet({ ...newProjet, weekEnd: parseInt(e.target.value) })
-                    }
-                    className="w-full p-3 border rounded-lg"
-                  >
-                    {WEEKS.filter(w => w.num >= (editingProjet?.weekStart || newProjet.weekStart)).map(w => (
-                      <option key={w.num} value={w.num}>S{w.num} ({w.dates})</option>
-                    ))}
+                  <select value={editingProjet?.weekEnd || newProjet.weekEnd}
+                    onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, weekEnd: parseInt(e.target.value) }) : setNewProjet({ ...newProjet, weekEnd: parseInt(e.target.value) })}
+                    className="w-full p-3 border rounded-lg">
+                    {WEEKS.filter(w => w.num >= (editingProjet?.weekStart || newProjet.weekStart)).map(w => <option key={w.num} value={w.num}>S{w.num} ({w.dates})</option>)}
                   </select>
                 </div>
               </div>
-
-              {/* Statut */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
                 <div className="flex gap-2">
                   {STATUTS.map(statut => (
-                    <button
-                      key={statut.id}
-                      type="button"
-                      onClick={() => editingProjet
-                        ? setEditingProjet({ ...editingProjet, status: statut.id })
-                        : setNewProjet({ ...newProjet, status: statut.id })
-                      }
-                      className={`flex-1 p-3 rounded-lg border-2 transition-all ${
-                        (editingProjet?.status || newProjet.status) === statut.id
-                          ? 'border-purple-500 bg-purple-50'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <div className="text-2xl mb-1">{statut.icon}</div>
+                    <button key={statut.id} type="button"
+                      onClick={() => editingProjet ? setEditingProjet({ ...editingProjet, status: statut.id }) : setNewProjet({ ...newProjet, status: statut.id })}
+                      className={`flex-1 p-3 rounded-lg border-2 ${(editingProjet?.status || newProjet.status) === statut.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
+                      <div className="text-xl mb-1">{statut.icon}</div>
                       <div className="text-xs font-medium">{statut.name}</div>
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* Avancement */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Avancement : {editingProjet?.avancement || newProjet.avancement || 0}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="10"
-                  value={editingProjet?.avancement || newProjet.avancement || 0}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value);
-                    if (editingProjet) {
-                      setEditingProjet({ ...editingProjet, avancement: val });
-                    } else {
-                      setNewProjet({ ...newProjet, avancement: val });
-                    }
-                  }}
-                  className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span>0%</span>
-                  <span>50%</span>
-                  <span>100%</span>
-                </div>
-              </div>
-
-              {/* ========== SECTION ÉQUIPE DU CYCLE ========== */}
-              <div className="border-t pt-4 mt-4">
-                <h4 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                  👥 Équipe du cycle
-                </h4>
-
-                {/* Gouvernance du cycle */}
-                <div className="bg-purple-50 rounded-lg p-4 mb-4">
-                  <h5 className="text-sm font-semibold text-purple-800 mb-3">🧭 GOUVERNANCE DU CYCLE</h5>
-                  
-                  {/* Référent Comité Stratégique IA */}
-                  <div className="mb-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      🎯 Référent Comité Stratégique IA
-                    </label>
-                    <select
-                      value={editingProjet?.referentComiteIA || newProjet.referentComiteIA || ''}
-                      onChange={(e) => editingProjet
-                        ? setEditingProjet({ ...editingProjet, referentComiteIA: e.target.value })
-                        : setNewProjet({ ...newProjet, referentComiteIA: e.target.value })
-                      }
-                      className="w-full p-2 border rounded-lg text-sm"
-                    >
-                      <option value="">-- Sélectionner --</option>
-                      {membresComiteIA.map(collab => (
-                        <option key={collab.id} value={collab.id}>
-                          {collab.name} {collab.nomComplet !== collab.name ? `(${collab.nomComplet})` : ''} - {collab.role}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">Rémi, Séverine, Céline, Michel</p>
-                  </div>
-
-                  {/* Référent Commission Conformité */}
-                  <div className="mb-3">
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      🔒 Référent Commission Conformité
-                    </label>
-                    <select
-                      value={editingProjet?.referentConformite || newProjet.referentConformite || ''}
-                      onChange={(e) => editingProjet
-                        ? setEditingProjet({ ...editingProjet, referentConformite: e.target.value })
-                        : setNewProjet({ ...newProjet, referentConformite: e.target.value })
-                      }
-                      className="w-full p-2 border rounded-lg text-sm"
-                    >
-                      <option value="">-- Sélectionner --</option>
-                      {membresConformite.map(collab => (
-                        <option key={collab.id} value={collab.id}>
-                          {collab.name} {collab.nomComplet !== collab.name ? `(${collab.nomComplet})` : ''} - {collab.role}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">Sylvain, Emmanuel, Rémi, Stéphane D., Damien, Geoffrey</p>
-                  </div>
-
-                  {/* Meneur */}
+              <div className="border-t pt-4">
+                <h4 className="font-semibold text-gray-800 mb-3">👥 Équipe du projet</h4>
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                      🏅 Meneur (Coordinateur)
-                    </label>
-                    <select
-                      value={editingProjet?.meneur || newProjet.meneur || ''}
-                      onChange={(e) => editingProjet
-                        ? setEditingProjet({ ...editingProjet, meneur: e.target.value })
-                        : setNewProjet({ ...newProjet, meneur: e.target.value })
-                      }
-                      className="w-full p-2 border rounded-lg text-sm"
-                    >
+                    <label className="block text-xs text-gray-500 mb-1">🏅 Meneur</label>
+                    <select value={editingProjet?.meneur || newProjet.meneur}
+                      onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, meneur: e.target.value }) : setNewProjet({ ...newProjet, meneur: e.target.value })}
+                      className="w-full p-2 border rounded-lg text-sm">
                       <option value="">-- Sélectionner --</option>
                       {Object.entries(collabsParService).map(([service, collabs]) => (
                         <optgroup key={service} label={service}>
-                          {collabs.filter(c => c.peutEtreMeneur).map(collab => (
-                            <option key={collab.id} value={collab.id}>
-                              {collab.name} - {collab.role}
-                            </option>
-                          ))}
+                          {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
                         </optgroup>
                       ))}
                     </select>
-                    <p className="text-xs text-gray-500 mt-1">Tout collaborateur peut être meneur</p>
                   </div>
-                </div>
-
-                {/* Équipe de cycle */}
-                <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                  <h5 className="text-sm font-semibold text-blue-800 mb-3">🏃 ÉQUIPE DE CYCLE (3-7 personnes)</h5>
-                  
-                  {/* Recherche */}
-                  <input
-                    type="text"
-                    placeholder="🔍 Rechercher un collaborateur..."
-                    value={searchCollab}
-                    onChange={(e) => setSearchCollab(e.target.value)}
-                    className="w-full p-2 border rounded-lg text-sm mb-3"
-                  />
-
-                  {/* Liste par service */}
-                  <div className="max-h-60 overflow-y-auto space-y-3">
-                    {Object.entries(collabsParService).map(([service, collabs]) => {
-                      const filteredCollabs = collabs.filter(c => 
-                        !searchCollab || 
-                        c.name.toLowerCase().includes(searchCollab.toLowerCase()) ||
-                        c.nomComplet?.toLowerCase().includes(searchCollab.toLowerCase())
-                      );
-                      if (filteredCollabs.length === 0) return null;
-                      
-                      return (
-                        <div key={service}>
-                          <div className="text-xs font-semibold text-gray-600 mb-1 flex items-center gap-2">
-                            📂 {service} ({filteredCollabs.length})
-                          </div>
-                          <div className="flex flex-wrap gap-1">
-                            {filteredCollabs.map(collab => {
-                              const currentCollabs = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                              const isSelected = currentCollabs.includes(collab.id);
-                              return (
-                                <button
-                                  key={collab.id}
-                                  type="button"
-                                  onClick={() => {
-                                    const updated = isSelected
-                                      ? currentCollabs.filter(id => id !== collab.id)
-                                      : [...currentCollabs, collab.id];
-                                    
-                                    if (editingProjet) {
-                                      setEditingProjet({ ...editingProjet, collaborateurs: updated });
-                                    } else {
-                                      setNewProjet({ ...newProjet, collaborateurs: updated });
-                                    }
-                                  }}
-                                  className={`px-2 py-1 rounded text-xs transition-all ${
-                                    isSelected
-                                      ? 'text-white'
-                                      : 'bg-white border text-gray-700 hover:bg-gray-100'
-                                  }`}
-                                  style={isSelected ? { backgroundColor: collab.color } : {}}
-                                  title={`${collab.nomComplet || collab.name} - ${collab.role}`}
-                                >
-                                  {collab.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">🎯 Référent Comité IA</label>
+                    <select value={editingProjet?.referentComiteIA || newProjet.referentComiteIA}
+                      onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, referentComiteIA: e.target.value }) : setNewProjet({ ...newProjet, referentComiteIA: e.target.value })}
+                      className="w-full p-2 border rounded-lg text-sm">
+                      <option value="">-- Sélectionner --</option>
+                      {membresComiteIA.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
+                    </select>
                   </div>
-
-                  {/* Compteur */}
-                  <div className="mt-3 text-xs text-gray-600">
-                    {(editingProjet?.collaborateurs || newProjet.collaborateurs || []).length} collaborateur(s) sélectionné(s)
-                    {(editingProjet?.collaborateurs || newProjet.collaborateurs || []).length < 3 && (
-                      <span className="text-orange-500 ml-2">⚠️ Minimum recommandé : 3</span>
-                    )}
-                    {(editingProjet?.collaborateurs || newProjet.collaborateurs || []).length > 7 && (
-                      <span className="text-orange-500 ml-2">⚠️ Maximum recommandé : 7</span>
-                    )}
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">🔒 Référent Conformité</label>
+                    <select value={editingProjet?.referentConformite || newProjet.referentConformite}
+                      onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, referentConformite: e.target.value }) : setNewProjet({ ...newProjet, referentConformite: e.target.value })}
+                      className="w-full p-2 border rounded-lg text-sm">
+                      <option value="">-- Sélectionner --</option>
+                      {membresConformite.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
+                    </select>
                   </div>
-                </div>
-
-                {/* Directeurs concernés (automatique) */}
-                {(() => {
-                  const currentCollabs = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                  const directeursConcernes = getDirecteursConcernes(currentCollabs);
-                  
-                  if (directeursConcernes.length === 0) return null;
-                  
-                  return (
-                    <div className="bg-gray-100 rounded-lg p-4">
-                      <h5 className="text-sm font-semibold text-gray-700 mb-2">📋 DIRECTEURS CONCERNÉS (automatique)</h5>
-                      <div className="flex flex-wrap gap-2">
-                        {directeursConcernes.map(dir => (
-                          <span
-                            key={dir.id}
-                            className="px-3 py-1 rounded-lg text-white text-sm"
-                            style={{ backgroundColor: dir.color }}
-                          >
-                            {dir.name}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-2">
-                        Déduit automatiquement des services de l'équipe sélectionnée
-                      </p>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">🏃 Équipe</label>
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 border rounded-lg">
+                      {collaborateurs.map(collab => {
+                        const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
+                        return (
+                          <button key={collab.id} type="button"
+                            onClick={() => {
+                              const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                              const updated = isSelected ? current.filter(id => id !== collab.id) : [...current, collab.id];
+                              editingProjet ? setEditingProjet({ ...editingProjet, collaborateurs: updated }) : setNewProjet({ ...newProjet, collaborateurs: updated });
+                            }}
+                            className={`px-2 py-1 rounded text-xs ${isSelected ? 'text-white' : 'bg-gray-100 text-gray-700'}`}
+                            style={isSelected ? { backgroundColor: collab.color } : {}}>
+                            {collab.name}
+                          </button>
+                        );
+                      })}
                     </div>
-                  );
-                })()}
+                  </div>
+                </div>
               </div>
-
-              {/* Commentaire */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
-                <textarea
-                  value={editingProjet?.commentaire || newProjet.commentaire || ''}
-                  onChange={(e) => editingProjet
-                    ? setEditingProjet({ ...editingProjet, commentaire: e.target.value })
-                    : setNewProjet({ ...newProjet, commentaire: e.target.value })
-                  }
-                  placeholder="Notes, précisions, liens utiles..."
-                  rows={3}
-                  className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500"
-                />
+                <textarea value={editingProjet?.commentaire || newProjet.commentaire}
+                  onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, commentaire: e.target.value }) : setNewProjet({ ...newProjet, commentaire: e.target.value })}
+                  rows={2} className="w-full p-3 border rounded-lg" />
               </div>
             </div>
-
-            {/* Boutons - toujours visibles */}
-            <div className="flex gap-3 p-6 pt-4 border-t bg-white rounded-b-xl">
-              <button
-                onClick={() => {
-                  setShowProjetModal(false);
-                  setEditingProjet(null);
-                  setSearchCollab('');
-                }}
-                className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={() => {
-                  const data = editingProjet || newProjet;
-                  if (!data.name || !data.chantierId) {
-                    alert('Veuillez remplir le nom et le chantier');
-                    return;
-                  }
-                  saveProjet(data);
-                }}
-                disabled={isSaving}
-                className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-              >
-                {isSaving ? '⏳ Enregistrement...' : (editingProjet ? 'Modifier' : 'Créer')}
+            <div className="flex gap-3 p-6 pt-4 border-t">
+              <button onClick={() => { setShowProjetModal(false); setEditingProjet(null); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
+              <button onClick={() => {
+                const data = editingProjet || newProjet;
+                if (!data.name || !data.chantierId) { alert('Veuillez remplir le nom et le chantier'); return; }
+                saveProjet(data);
+              }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                {isSaving ? '⏳...' : (editingProjet ? 'Modifier' : 'Créer')}
               </button>
             </div>
           </div>
