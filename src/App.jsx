@@ -46,7 +46,6 @@ export default function App() {
   const [axes, setAxes] = useState([]);
   const [chantiers, setChantiers] = useState([]);
   const [collaborateurs, setCollaborateurs] = useState([]);
-  const [taches, setTaches] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState(null);
@@ -71,7 +70,11 @@ export default function App() {
   });
   const [filtreAxe, setFiltreAxe] = useState('');
   const [filtreChantier, setFiltreChantier] = useState('');
-  const [searchCollab, setSearchCollab] = useState('');
+  const [filtreStatut, setFiltreStatut] = useState('');
+  
+  // Drag and Drop state
+  const [draggedTache, setDraggedTache] = useState(null);
+  const [dragOverSprint, setDragOverSprint] = useState(null);
 
   const handleLogin = () => {
     if (passwordInput === 'ApiYou2026') {
@@ -223,110 +226,135 @@ export default function App() {
     await saveTache({ ...tache, status: newStatus });
   };
 
+  // Drag and Drop handlers
+  const handleDragStart = (e, tache) => {
+    setDraggedTache(tache);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', tache.id);
+    e.target.style.opacity = '0.5';
+  };
+
+  const handleDragEnd = (e) => {
+    e.target.style.opacity = '1';
+    setDraggedTache(null);
+    setDragOverSprint(null);
+  };
+
+  const handleDragOver = (e, sprint) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverSprint(sprint);
+  };
+
+  const handleDrop = async (e, targetSprint) => {
+    e.preventDefault();
+    setDragOverSprint(null);
+    if (draggedTache && draggedTache.sprint !== targetSprint) {
+      await saveTache({ ...draggedTache, sprint: targetSprint });
+    }
+    setDraggedTache(null);
+  };
+
   const getAxeForChantier = (chantierId) => {
     const chantier = chantiers.find(c => c.id === chantierId);
     return axes.find(a => a.id === chantier?.axeId);
   };
   const getChantier = (chantierId) => chantiers.find(c => c.id === chantierId);
   const getCollab = (collabId) => collaborateurs.find(c => c.id === collabId);
-  const getCollabName = (collabId) => getCollab(collabId)?.name || collabId;
-  const getCollabColor = (collabId) => getCollab(collabId)?.color || '#666';
-  const getCollabPhoto = (collabId) => getCollab(collabId)?.photo || null;
   const getProjetsForWeek = (weekNum, chantierId) => projets.filter(p => {
     if (p.chantierId !== chantierId) return false;
     return weekNum >= (p.weekStart || 1) && weekNum <= (p.weekEnd || p.weekStart || 1);
   });
   const formatTime = (date) => date ? date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
 
-  const membresComiteIA = collaborateurs.filter(c => c.estComiteStrategiqueIA);
-  const membresConformite = collaborateurs.filter(c => c.estCommissionConformite);
-  const collabsParService = collaborateurs.reduce((acc, collab) => {
-    const service = collab.service || 'Autre';
-    if (!acc[service]) acc[service] = [];
-    acc[service].push(collab);
-    return acc;
-  }, {});
+  const currentWeeks = TRIMESTRES[trimestre] || [];
   const chantiersFiltres = filtreAxe ? chantiers.filter(c => c.axeId === filtreAxe) : chantiers;
   const projetsFiltres = projets.filter(p => {
-    if (filtreAxe) {
-      const chantier = getChantier(p.chantierId);
-      if (chantier?.axeId !== filtreAxe) return false;
-    }
+    if (filtreAxe && getAxeForChantier(p.chantierId)?.id !== filtreAxe) return false;
     if (filtreChantier && p.chantierId !== filtreChantier) return false;
+    if (filtreStatut && p.status !== filtreStatut) return false;
     return true;
   });
-  const currentWeeks = TRIMESTRES[trimestre];
+
+  const collabsParService = collaborateurs.reduce((acc, c) => {
+    const service = c.service || 'Autre';
+    if (!acc[service]) acc[service] = [];
+    acc[service].push(c);
+    return acc;
+  }, {});
+
+  const membresComiteIA = collaborateurs.filter(c => c.estComiteStrategiqueIA);
+  const membresConformite = collaborateurs.filter(c => c.estCommissionConformite);
+
   const getTachesBySprint = (sprint) => projetTaches.filter(t => t.sprint === sprint);
   const getSprintStats = (sprint) => {
-    const sprintTaches = getTachesBySprint(sprint);
-    const total = sprintTaches.length;
-    const done = sprintTaches.filter(t => t.status === 'done').length;
-    const heuresEstimees = sprintTaches.reduce((sum, t) => sum + (t.dureeEstimee || 0), 0);
-    const heuresReelles = sprintTaches.reduce((sum, t) => sum + (t.heuresReelles || 0), 0);
-    return { total, done, heuresEstimees, heuresReelles, progress: total > 0 ? Math.round((done / total) * 100) : 0 };
-  };
-  const getProjetStats = () => {
-    const total = projetTaches.length;
-    const done = projetTaches.filter(t => t.status === 'done').length;
-    const heuresEstimees = projetTaches.reduce((sum, t) => sum + (t.dureeEstimee || 0), 0);
-    const heuresReelles = projetTaches.reduce((sum, t) => sum + (t.heuresReelles || 0), 0);
-    return { total, done, heuresEstimees, heuresReelles, progress: total > 0 ? Math.round((done / total) * 100) : 0 };
+    const taches = getTachesBySprint(sprint);
+    const done = taches.filter(t => t.status === 'done').length;
+    const heuresEstimees = taches.reduce((sum, t) => sum + (t.dureeEstimee || 0), 0);
+    const heuresReelles = taches.reduce((sum, t) => sum + (t.heuresReelles || 0), 0);
+    return { total: taches.length, done, heuresEstimees, heuresReelles, progress: taches.length ? Math.round((done / taches.length) * 100) : 0 };
   };
 
-  // LOGIN SCREEN
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-900 to-blue-900 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-xl shadow-2xl max-w-md w-full mx-4">
+      <div className="min-h-screen bg-gradient-to-br from-purple-700 to-blue-600 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
-            <span className="text-5xl">🚀</span>
-            <h1 className="text-2xl font-bold text-gray-800 mt-4">Sprint Board COMEX 2026</h1>
-            <p className="text-gray-500">Plan d'action stratégique API & YOU</p>
+            <span className="text-6xl">🚀</span>
+            <h1 className="text-2xl font-bold mt-4 text-gray-800">Sprint Board COMEX 2026</h1>
+            <p className="text-gray-500 mt-2">Plan d'action stratégique API & YOU</p>
           </div>
-          <input type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && handleLogin()} placeholder="Mot de passe"
-            className="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-purple-500 focus:outline-none" />
-          <button onClick={handleLogin} className="w-full bg-purple-600 text-white py-3 rounded-lg font-medium hover:bg-purple-700">Accéder</button>
+          <div className="space-y-4">
+            <input type="password" placeholder="Mot de passe" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+              className="w-full p-4 border rounded-xl text-center text-lg" />
+            <button onClick={handleLogin} className="w-full py-4 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700">Accéder</button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // SPRINT VIEW
+  // VUE DÉTAIL PROJET
   if (selectedProjet) {
     const axe = getAxeForChantier(selectedProjet.chantierId);
     const chantier = getChantier(selectedProjet.chantierId);
-    const stats = getProjetStats();
     const meneur = getCollab(selectedProjet.meneur);
     const referentIA = getCollab(selectedProjet.referentComiteIA);
     const referentConf = getCollab(selectedProjet.referentConformite);
+    const equipe = (selectedProjet.collaborateurs || []).map(getCollab).filter(Boolean);
+    const globalStats = {
+      total: projetTaches.length,
+      done: projetTaches.filter(t => t.status === 'done').length,
+      heuresEstimees: projetTaches.reduce((sum, t) => sum + (t.dureeEstimee || 0), 0),
+      heuresReelles: projetTaches.reduce((sum, t) => sum + (t.heuresReelles || 0), 0),
+    };
+    globalStats.progress = globalStats.total ? Math.round((globalStats.done / globalStats.total) * 100) : 0;
 
     return (
       <div className="min-h-screen bg-gray-100">
-        <div className="bg-gradient-to-r from-purple-700 to-blue-600 text-white p-4 shadow-lg">
+        <div className="bg-gradient-to-r from-purple-700 to-blue-600 text-white p-4">
           <div className="flex items-center gap-4">
-            <button onClick={() => setSelectedProjet(null)} className="p-2 hover:bg-white/20 rounded-lg">← Retour</button>
+            <button onClick={() => setSelectedProjet(null)} className="px-3 py-2 bg-white/20 rounded-lg hover:bg-white/30">← Retour</button>
             <div className="flex-1">
-              <div className="flex items-center gap-2 text-purple-200 text-sm">
-                <span>{axe?.icon}</span><span>{axe?.name}</span><span>•</span><span>{chantier?.name}</span>
-              </div>
-              <h1 className="text-2xl font-bold">{selectedProjet.name}</h1>
+              <div className="text-sm opacity-80">{axe?.icon} {axe?.name} • {chantier?.name}</div>
+              <h1 className="text-xl font-bold">{selectedProjet.name}</h1>
             </div>
             <div className="text-right">
-              <div className="text-sm text-purple-200">Semaines {selectedProjet.weekStart} → {selectedProjet.weekEnd}</div>
+              <div className="text-sm opacity-80">Semaines {selectedProjet.weekStart} → {selectedProjet.weekEnd}</div>
               <div className="flex items-center gap-2 mt-1">
                 <div className="w-32 h-2 bg-white/30 rounded-full overflow-hidden">
-                  <div className="h-full bg-green-400 rounded-full" style={{ width: `${stats.progress}%` }} />
+                  <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${globalStats.progress}%` }} />
                 </div>
-                <span className="text-sm font-medium">{stats.progress}%</span>
+                <span className="text-sm">{globalStats.progress}%</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-6">
+        <div className="p-4">
           <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-1 space-y-4">
+            <div className="space-y-4">
               {selectedProjet.objectif && (
                 <div className="bg-white rounded-lg shadow p-4">
                   <h3 className="font-semibold text-gray-800 mb-2">🎯 Objectif</h3>
@@ -335,50 +363,64 @@ export default function App() {
               )}
               <div className="bg-white rounded-lg shadow p-4">
                 <h3 className="font-semibold text-gray-800 mb-3">👥 Équipe du projet</h3>
-                {[{label: '🏅 Meneur', person: meneur}, {label: '🎯 Référent Comité IA', person: referentIA}, {label: '🔒 Référent Conformité', person: referentConf}]
-                  .filter(({person}) => person).map(({label, person}) => (
-                  <div key={label} className="mb-3">
-                    <div className="text-xs text-gray-500 mb-1">{label}</div>
-                    <div className="flex items-center gap-2">
-                      {person.photo ? <img src={person.photo} alt={person.name} className="w-8 h-8 rounded-full object-cover" />
-                        : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium" style={{ backgroundColor: person.color }}>{person.name.charAt(0)}</div>}
-                      <div><div className="font-medium text-sm">{person.name}</div><div className="text-xs text-gray-500">{person.role}</div></div>
+                <div className="space-y-3">
+                  {meneur && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">🏅</span>
+                      <span className="text-xs text-gray-500 w-20">Meneur</span>
+                      <div className="flex items-center gap-2">
+                        {meneur.photo ? <img src={meneur.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                          : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: meneur.color }}>{meneur.name.charAt(0)}</div>}
+                        <div><div className="font-medium text-sm">{meneur.name}</div><div className="text-xs text-gray-500">{meneur.role}</div></div>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {selectedProjet.collaborateurs?.length > 0 && (
-                  <div>
-                    <div className="text-xs text-gray-500 mb-1">🏃 Équipe</div>
-                    <div className="flex flex-wrap gap-1">
-                      {selectedProjet.collaborateurs.map(collabId => {
-                        const collab = getCollab(collabId);
-                        if (!collab) return null;
-                        return (
-                          <div key={collabId} className="flex items-center gap-1 bg-gray-100 rounded-full px-2 py-1">
-                            {collab.photo ? <img src={collab.photo} alt={collab.name} className="w-5 h-5 rounded-full object-cover" />
-                              : <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: collab.color }}>{collab.name.charAt(0)}</div>}
-                            <span className="text-xs">{collab.name}</span>
+                  )}
+                  {referentIA && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">🎯</span>
+                      <span className="text-xs text-gray-500 w-20">Réf. IA</span>
+                      <div className="flex items-center gap-2">
+                        {referentIA.photo ? <img src={referentIA.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                          : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: referentIA.color }}>{referentIA.name.charAt(0)}</div>}
+                        <div><div className="font-medium text-sm">{referentIA.name}</div><div className="text-xs text-gray-500">{referentIA.role}</div></div>
+                      </div>
+                    </div>
+                  )}
+                  {referentConf && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">🔒</span>
+                      <span className="text-xs text-gray-500 w-20">Réf. Conf.</span>
+                      <div className="flex items-center gap-2">
+                        {referentConf.photo ? <img src={referentConf.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                          : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: referentConf.color }}>{referentConf.name.charAt(0)}</div>}
+                        <div><div className="font-medium text-sm">{referentConf.name}</div><div className="text-xs text-gray-500">{referentConf.role}</div></div>
+                      </div>
+                    </div>
+                  )}
+                  {equipe.length > 0 && (
+                    <div>
+                      <div className="flex items-center gap-2 mb-2"><span className="text-lg">🏃</span><span className="text-xs text-gray-500">Équipe</span></div>
+                      <div className="flex flex-wrap gap-2 ml-7">
+                        {equipe.map(c => (
+                          <div key={c.id} className="flex items-center gap-1" title={`${c.name} - ${c.role}`}>
+                            {c.photo ? <img src={c.photo} alt="" className="w-7 h-7 rounded-full object-cover" />
+                              : <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: c.color }}>{c.name.charAt(0)}</div>}
+                            <span className="text-xs text-gray-600">{c.name.split(' ')[0]}</span>
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
               <div className="bg-white rounded-lg shadow p-4">
                 <h3 className="font-semibold text-gray-800 mb-3">📊 Statistiques</h3>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-gray-600">Tâches</span><span className="font-medium">{stats.done}/{stats.total}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Heures estimées</span><span className="font-medium">{stats.heuresEstimees}h</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Heures réelles</span><span className="font-medium">{stats.heuresReelles}h</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Tâches</span><span className="font-medium">{globalStats.done}/{globalStats.total}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Heures estimées</span><span className="font-medium">{globalStats.heuresEstimees}h</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Heures réelles</span><span className="font-medium">{globalStats.heuresReelles}h</span></div>
                 </div>
               </div>
-              {selectedProjet.commentaire && (
-                <div className="bg-white rounded-lg shadow p-4">
-                  <h3 className="font-semibold text-gray-800 mb-2">💬 Notes</h3>
-                  <p className="text-gray-600 text-sm">{selectedProjet.commentaire}</p>
-                </div>
-              )}
               <div className="bg-white rounded-lg shadow p-4">
                 <button onClick={() => { setEditingProjet(selectedProjet); setShowProjetModal(true); }}
                   className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">✏️ Modifier le projet</button>
@@ -391,23 +433,28 @@ export default function App() {
                 <button onClick={() => { setNewTache({ name: '', projetId: selectedProjet.id, sprint: 'Sprint 1', assigne: '', dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '' }); setEditingTache(null); setShowTacheModal(true); }}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">➕ Nouvelle tâche</button>
               </div>
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm text-blue-700">
+                💡 <strong>Astuce :</strong> Glissez-déposez les tâches entre les sprints pour les réorganiser !
+              </div>
               {loadingTaches ? (
-                <div className="text-center py-12"><div className="text-4xl mb-4">⏳</div><p className="text-gray-600">Chargement des tâches...</p></div>
+                <div className="text-center py-12"><div className="text-4xl mb-4">⏳</div><p className="text-gray-600">Chargement...</p></div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-4">
                   {SPRINTS.map(sprint => {
                     const sprintTaches = getTachesBySprint(sprint);
                     const sprintStats = getSprintStats(sprint);
+                    const isDragOver = dragOverSprint === sprint;
                     return (
-                      <div key={sprint} className="bg-white rounded-lg shadow overflow-hidden">
+                      <div key={sprint} className={`bg-white rounded-lg shadow overflow-hidden transition-all ${isDragOver ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
+                        onDragOver={(e) => handleDragOver(e, sprint)} onDragLeave={() => setDragOverSprint(null)} onDrop={(e) => handleDrop(e, sprint)}>
                         <div className="bg-gray-800 text-white p-4 flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <span className="text-lg font-bold">{sprint}</span>
-                            <span className="bg-white/20 px-2 py-0.5 rounded text-sm">{sprintStats.done}/{sprintStats.total} tâches</span>
+                            <span className="bg-white/20 px-2 py-0.5 rounded text-sm">{sprintStats.done}/{sprintStats.total}</span>
                           </div>
                           <div className="flex items-center gap-4 text-sm">
-                            <span>⏱️ {sprintStats.heuresEstimees}h estimées</span>
-                            <span>✅ {sprintStats.heuresReelles}h réelles</span>
+                            <span>⏱️ {sprintStats.heuresEstimees}h</span>
+                            <span>✅ {sprintStats.heuresReelles}h</span>
                             <div className="flex items-center gap-2">
                               <div className="w-20 h-2 bg-white/30 rounded-full overflow-hidden">
                                 <div className="h-full bg-green-400 rounded-full" style={{ width: `${sprintStats.progress}%` }} />
@@ -417,32 +464,33 @@ export default function App() {
                           </div>
                         </div>
                         {sprintTaches.length === 0 ? (
-                          <div className="p-8 text-center text-gray-400">Aucune tâche dans ce sprint</div>
+                          <div className={`p-8 text-center ${isDragOver ? 'bg-purple-50 text-purple-600' : 'text-gray-400'}`}>
+                            {isDragOver ? '🎯 Déposez ici' : 'Aucune tâche'}
+                          </div>
                         ) : (
                           <div className="divide-y">
                             {sprintTaches.map(tache => {
                               const assigne = getCollab(tache.assigne);
                               return (
-                                <div key={tache.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
+                                <div key={tache.id} draggable onDragStart={(e) => handleDragStart(e, tache)} onDragEnd={handleDragEnd}
+                                  className="p-4 hover:bg-gray-50 flex items-center gap-4 cursor-grab active:cursor-grabbing">
+                                  <div className="text-gray-400">⋮⋮</div>
                                   <button onClick={() => toggleTacheStatus(tache)}
-                                    className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${tache.status === 'done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-500'}`}>
+                                    className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${tache.status === 'done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-500'}`}>
                                     {tache.status === 'done' && '✓'}
                                   </button>
-                                  <div className="flex-1">
-                                    <div className={`font-medium ${tache.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
-                                    {tache.commentaire && <div className="text-sm text-gray-500 mt-1">{tache.commentaire}</div>}
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`font-medium truncate ${tache.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
+                                    {tache.commentaire && <div className="text-sm text-gray-500 truncate">{tache.commentaire}</div>}
                                   </div>
-                                  <div className="text-sm text-gray-500 flex items-center gap-2">
-                                    <span>⏱️ {tache.dureeEstimee}h</span><span>✅ {tache.heuresReelles}h</span>
-                                  </div>
+                                  <div className="text-sm text-gray-500 flex-shrink-0">⏱️{tache.dureeEstimee}h ✅{tache.heuresReelles}h</div>
                                   {assigne ? (
-                                    <div className="flex items-center gap-2">
-                                      {assigne.photo ? <img src={assigne.photo} alt={assigne.name} className="w-8 h-8 rounded-full object-cover" />
-                                        : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium" style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>}
-                                      <span className="text-sm text-gray-600">{assigne.name}</span>
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      {assigne.photo ? <img src={assigne.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                                        : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>}
                                     </div>
-                                  ) : <span className="text-sm text-gray-400">Non assigné</span>}
-                                  <div className="flex gap-1">
+                                  ) : <span className="text-sm text-gray-400">—</span>}
+                                  <div className="flex gap-1 flex-shrink-0">
                                     <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded">✏️</button>
                                     <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded">🗑️</button>
                                   </div>
@@ -466,31 +514,33 @@ export default function App() {
               <h3 className="text-xl font-bold p-6 pb-4 border-b">{editingTache ? '✏️ Modifier la tâche' : '➕ Nouvelle tâche'}</h3>
               <div className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la tâche *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
                   <input type="text" value={editingTache?.name || newTache.name}
                     onChange={(e) => editingTache ? setEditingTache({ ...editingTache, name: e.target.value }) : setNewTache({ ...newTache, name: e.target.value })}
                     className="w-full p-3 border rounded-lg" />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Sprint/Phase</label>
-                  <select value={editingTache?.sprint || newTache.sprint}
-                    onChange={(e) => editingTache ? setEditingTache({ ...editingTache, sprint: e.target.value }) : setNewTache({ ...newTache, sprint: e.target.value })}
-                    className="w-full p-3 border rounded-lg">
-                    {SPRINTS.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Assigné à</label>
-                  <select value={editingTache?.assigne || newTache.assigne}
-                    onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
-                    className="w-full p-3 border rounded-lg">
-                    <option value="">-- Non assigné --</option>
-                    {Object.entries(collabsParService).map(([service, collabs]) => (
-                      <optgroup key={service} label={service}>
-                        {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Sprint</label>
+                    <select value={editingTache?.sprint || newTache.sprint}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, sprint: e.target.value }) : setNewTache({ ...newTache, sprint: e.target.value })}
+                      className="w-full p-3 border rounded-lg">
+                      {SPRINTS.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Assigné</label>
+                    <select value={editingTache?.assigne || newTache.assigne}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
+                      className="w-full p-3 border rounded-lg">
+                      <option value="">—</option>
+                      {Object.entries(collabsParService).map(([service, collabs]) => (
+                        <optgroup key={service} label={service}>
+                          {collabs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -514,7 +564,7 @@ export default function App() {
                         onClick={() => editingTache ? setEditingTache({ ...editingTache, status: statut.id }) : setNewTache({ ...newTache, status: statut.id })}
                         className={`flex-1 p-3 rounded-lg border-2 ${(editingTache?.status || newTache.status) === statut.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
                         <div className="text-xl mb-1">{statut.icon}</div>
-                        <div className="text-xs font-medium">{statut.name}</div>
+                        <div className="text-xs">{statut.name}</div>
                       </button>
                     ))}
                   </div>
@@ -530,10 +580,10 @@ export default function App() {
                 <button onClick={() => { setShowTacheModal(false); setEditingTache(null); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
                 <button onClick={() => {
                   const data = editingTache || { ...newTache, projetId: selectedProjet.id };
-                  if (!data.name) { alert('Veuillez remplir le nom'); return; }
+                  if (!data.name) { alert('Nom requis'); return; }
                   saveTache(data);
                 }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
-                  {isSaving ? '⏳...' : (editingTache ? 'Modifier' : 'Créer')}
+                  {isSaving ? '⏳' : (editingTache ? 'Modifier' : 'Créer')}
                 </button>
               </div>
             </div>
@@ -626,8 +676,8 @@ export default function App() {
                                       return (
                                         <div key={projet.id} className="text-[9px] p-1 m-0.5 rounded text-white truncate cursor-pointer hover:opacity-80"
                                           style={{ backgroundColor: statut?.color || '#666' }}
-                                          onClick={(e) => { e.stopPropagation(); setSelectedProjet(projet); }}
-                                          title={`🔍 ${projet.name}`}>🔍 {projet.name}</div>
+                                          onClick={(e) => { e.stopPropagation(); setEditingProjet(projet); setShowProjetModal(true); }}
+                                          title={projet.name}>📌 {projet.name}</div>
                                       );
                                     })}
                                   </td>
@@ -640,7 +690,7 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
-                <div className="p-4 bg-gray-50 border-t flex items-center gap-6">
+                <div className="p-4 bg-gray-50 border-t flex items-center gap-6 flex-wrap">
                   <span className="font-medium text-gray-700">Légende :</span>
                   {STATUTS.map(statut => (
                     <div key={statut.id} className="flex items-center gap-2">
@@ -648,15 +698,15 @@ export default function App() {
                       <span className="text-sm">{statut.icon} {statut.name}</span>
                     </div>
                   ))}
-                  <span className="text-sm text-gray-500 ml-4">🔍 Cliquez sur un projet pour voir le détail Sprint</span>
+                  <span className="text-sm text-gray-500">📌 Cliquez sur un projet = configurer | Case vide = nouveau projet</span>
                 </div>
               </div>
             )}
 
             {activeTab === 'projets' && (
               <div className="space-y-4">
-                <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+                <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between flex-wrap gap-4">
+                  <div className="flex items-center gap-4 flex-wrap">
                     <select value={filtreAxe} onChange={(e) => { setFiltreAxe(e.target.value); setFiltreChantier(''); }} className="p-2 border rounded-lg">
                       <option value="">Tous les axes</option>
                       {axes.map(axe => <option key={axe.id} value={axe.id}>{axe.icon} {axe.name}</option>)}
@@ -664,6 +714,10 @@ export default function App() {
                     <select value={filtreChantier} onChange={(e) => setFiltreChantier(e.target.value)} className="p-2 border rounded-lg">
                       <option value="">Tous les chantiers</option>
                       {chantiersFiltres.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                    </select>
+                    <select value={filtreStatut} onChange={(e) => setFiltreStatut(e.target.value)} className="p-2 border rounded-lg">
+                      <option value="">Tous statuts</option>
+                      {STATUTS.map(s => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
                     </select>
                   </div>
                   <button onClick={() => { setNewProjet({ name: '', chantierId: chantiers[0]?.id || '', weekStart: 1, weekEnd: 1, collaborateurs: [], status: 'todo', commentaire: '', avancement: 0, objectif: '', referentComiteIA: '', referentConformite: '', meneur: '' }); setEditingProjet(null); setShowProjetModal(true); }}
@@ -687,10 +741,10 @@ export default function App() {
                             const statut = STATUTS.find(s => s.id === projet.status);
                             return (
                               <div key={projet.id} className="p-4 hover:bg-gray-50 flex items-center gap-4">
-                                <div className="w-3 h-12 rounded" style={{ backgroundColor: statut?.color }} title={statut?.name} />
-                                <div className="flex-1">
-                                  <div className="font-medium text-gray-800">{projet.name}</div>
-                                  <div className="text-sm text-gray-500 flex items-center gap-4 mt-1">
+                                <div className="w-3 h-12 rounded" style={{ backgroundColor: statut?.color }} />
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-gray-800 truncate">{projet.name}</div>
+                                  <div className="text-sm text-gray-500 flex items-center gap-4 mt-1 flex-wrap">
                                     <span>📅 S{projet.weekStart}{projet.weekEnd !== projet.weekStart ? ` → S${projet.weekEnd}` : ''}</span>
                                     <span className="px-2 py-0.5 rounded text-white text-xs" style={{ backgroundColor: statut?.color }}>{statut?.icon} {statut?.name}</span>
                                   </div>
@@ -700,15 +754,15 @@ export default function App() {
                                     const collab = getCollab(collabId);
                                     if (!collab) return null;
                                     return collab.photo ? 
-                                      <img key={collabId} src={collab.photo} alt={collab.name} className="w-8 h-8 rounded-full object-cover" title={collab.name} />
+                                      <img key={collabId} src={collab.photo} alt="" className="w-8 h-8 rounded-full object-cover" title={collab.name} />
                                       : <div key={collabId} className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: collab.color }} title={collab.name}>{collab.name.charAt(0)}</div>;
                                   })}
                                   {projet.collaborateurs?.length > 3 && <span className="text-xs text-gray-500">+{projet.collaborateurs.length - 3}</span>}
                                 </div>
                                 <div className="flex gap-1">
-                                  <button onClick={() => setSelectedProjet(projet)} className="p-2 text-purple-500 hover:bg-purple-50 rounded" title="Voir Sprint">🔍</button>
-                                  <button onClick={() => { setEditingProjet(projet); setShowProjetModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded">✏️</button>
-                                  <button onClick={() => deleteProjet(projet.id)} className="p-2 text-red-500 hover:bg-red-50 rounded">🗑️</button>
+                                  <button onClick={() => setSelectedProjet(projet)} className="p-2 text-purple-500 hover:bg-purple-50 rounded" title="Détail & tâches">🔍</button>
+                                  <button onClick={() => { setEditingProjet(projet); setShowProjetModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Configurer">✏️</button>
+                                  <button onClick={() => deleteProjet(projet.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
                                 </div>
                               </div>
                             );
@@ -727,7 +781,15 @@ export default function App() {
       {showProjetModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <h3 className="text-xl font-bold p-6 pb-4 border-b">{editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}</h3>
+            <div className="flex items-center justify-between p-6 pb-4 border-b">
+              <h3 className="text-xl font-bold">{editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}</h3>
+              {editingProjet && (
+                <button onClick={() => { setShowProjetModal(false); setSelectedProjet(editingProjet); }} 
+                  className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200">
+                  🔍 Détail
+                </button>
+              )}
+            </div>
             <div className="overflow-y-auto flex-1 p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nom du projet *</label>
@@ -739,7 +801,7 @@ export default function App() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">Objectif</label>
                 <textarea value={editingProjet?.objectif || newProjet.objectif}
                   onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, objectif: e.target.value }) : setNewProjet({ ...newProjet, objectif: e.target.value })}
-                  rows={2} className="w-full p-3 border rounded-lg" placeholder="Quel est l'objectif de ce projet ?" />
+                  rows={2} className="w-full p-3 border rounded-lg" placeholder="Objectif du projet" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Chantier *</label>
@@ -780,20 +842,20 @@ export default function App() {
                       onClick={() => editingProjet ? setEditingProjet({ ...editingProjet, status: statut.id }) : setNewProjet({ ...newProjet, status: statut.id })}
                       className={`flex-1 p-3 rounded-lg border-2 ${(editingProjet?.status || newProjet.status) === statut.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
                       <div className="text-xl mb-1">{statut.icon}</div>
-                      <div className="text-xs font-medium">{statut.name}</div>
+                      <div className="text-xs">{statut.name}</div>
                     </button>
                   ))}
                 </div>
               </div>
               <div className="border-t pt-4">
-                <h4 className="font-semibold text-gray-800 mb-3">👥 Équipe du projet</h4>
+                <h4 className="font-semibold text-gray-800 mb-3">👥 Équipe</h4>
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">🏅 Meneur</label>
                     <select value={editingProjet?.meneur || newProjet.meneur}
                       onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, meneur: e.target.value }) : setNewProjet({ ...newProjet, meneur: e.target.value })}
                       className="w-full p-2 border rounded-lg text-sm">
-                      <option value="">-- Sélectionner --</option>
+                      <option value="">—</option>
                       {Object.entries(collabsParService).map(([service, collabs]) => (
                         <optgroup key={service} label={service}>
                           {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
@@ -806,7 +868,7 @@ export default function App() {
                     <select value={editingProjet?.referentComiteIA || newProjet.referentComiteIA}
                       onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, referentComiteIA: e.target.value }) : setNewProjet({ ...newProjet, referentComiteIA: e.target.value })}
                       className="w-full p-2 border rounded-lg text-sm">
-                      <option value="">-- Sélectionner --</option>
+                      <option value="">—</option>
                       {membresComiteIA.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
                     </select>
                   </div>
@@ -815,7 +877,7 @@ export default function App() {
                     <select value={editingProjet?.referentConformite || newProjet.referentConformite}
                       onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, referentConformite: e.target.value }) : setNewProjet({ ...newProjet, referentConformite: e.target.value })}
                       className="w-full p-2 border rounded-lg text-sm">
-                      <option value="">-- Sélectionner --</option>
+                      <option value="">—</option>
                       {membresConformite.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
                     </select>
                   </div>
@@ -852,10 +914,10 @@ export default function App() {
               <button onClick={() => { setShowProjetModal(false); setEditingProjet(null); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
               <button onClick={() => {
                 const data = editingProjet || newProjet;
-                if (!data.name || !data.chantierId) { alert('Veuillez remplir le nom et le chantier'); return; }
+                if (!data.name || !data.chantierId) { alert('Nom et chantier requis'); return; }
                 saveProjet(data);
               }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
-                {isSaving ? '⏳...' : (editingProjet ? 'Modifier' : 'Créer')}
+                {isSaving ? '⏳' : (editingProjet ? 'Modifier' : 'Créer')}
               </button>
             </div>
           </div>
