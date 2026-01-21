@@ -224,18 +224,32 @@ export default async function handler(req, res) {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.taches, headers);
         
-        let taches = records.map(record => ({
-          id: record.id,
-          name: record.fields['Nom de la tâche'] || record.fields.Name || '',
-          projetId: record.fields.Projet || '',
-          sprint: record.fields['Sprint/Phase'] || record.fields.Sprint || 'Backlog',
-          assigne: record.fields['Assigné'] || record.fields.Assigne || '',
-          dureeEstimee: record.fields['Durée estimée'] || record.fields.DureeEstimee || 0,
-          heuresReelles: record.fields['Heures réelles'] || record.fields.HeuresReelles || 0,
-          status: record.fields.Statut || record.fields.Status || 'todo',
-          commentaire: record.fields.Commentaire || '',
-          order: record.fields.Order || 0,
-        }));
+        let taches = records.map(record => {
+          // Gérer Projet qui peut être un Linked Record (tableau) ou texte
+          let projetId = record.fields.Projet || record.fields['Projet'] || '';
+          if (Array.isArray(projetId) && projetId.length > 0) {
+            projetId = projetId[0]; // Prendre le premier si c'est un tableau
+          }
+          
+          // Gérer Assigné qui peut être un Linked Record (tableau) ou texte
+          let assigne = record.fields['Assigné'] || record.fields.Assigne || '';
+          if (Array.isArray(assigne) && assigne.length > 0) {
+            assigne = assigne[0];
+          }
+          
+          return {
+            id: record.id,
+            name: record.fields['Nom de la tâche'] || record.fields.Name || '',
+            projetId: projetId,
+            sprint: record.fields['Sprint/Phase'] || record.fields.Sprint || 'Backlog',
+            assigne: assigne,
+            dureeEstimee: record.fields['Durée estimée'] || record.fields.DureeEstimee || 0,
+            heuresReelles: record.fields['Heures réelles'] || record.fields.HeuresReelles || 0,
+            status: record.fields.Statut || record.fields.Status || 'todo',
+            commentaire: record.fields.Commentaire || '',
+            order: record.fields.Order || 0,
+          };
+        });
 
         // Filtrer par projet si spécifié
         if (projetId) {
@@ -249,27 +263,50 @@ export default async function handler(req, res) {
       if (req.method === 'POST') {
         const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
         
+        // Construire les champs - Projet peut être un Linked Record ou un texte
+        const fields = {
+          'Nom de la tâche': name,
+          'Sprint/Phase': sprint || 'Backlog',
+          'Statut': status || 'todo',
+          'Commentaire': commentaire || '',
+          'Order': order || 0,
+        };
+        
+        // Projet - essayer comme Linked Record (tableau) si c'est un recordId Airtable
+        if (projetId) {
+          // Si c'est un recordId Airtable (commence par "rec"), envoyer comme tableau
+          if (projetId.startsWith('rec')) {
+            fields['Projet'] = [projetId];
+          } else {
+            fields['Projet'] = projetId;
+          }
+        }
+        
+        // Assigné - pareil, peut être un Linked Record
+        if (assigne) {
+          if (assigne.startsWith('rec')) {
+            fields['Assigné'] = [assigne];
+          } else {
+            fields['Assigné'] = assigne;
+          }
+        }
+        
+        // Durées - seulement si > 0 pour éviter les erreurs
+        if (dureeEstimee > 0) fields['Durée estimée'] = dureeEstimee;
+        if (heuresReelles > 0) fields['Heures réelles'] = heuresReelles;
+        
+        console.log('Creating tache with fields:', JSON.stringify(fields));
+        
         const response = await fetch(getAirtableUrl(TABLES.taches), {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            records: [{
-              fields: {
-                'Nom de la tâche': name,
-                'Projet': projetId,
-                'Sprint/Phase': sprint || 'Backlog',
-                'Assigné': assigne || '',
-                'Durée estimée': dureeEstimee || 0,
-                'Heures réelles': heuresReelles || 0,
-                'Statut': status || 'todo',
-                'Commentaire': commentaire || '',
-                'Order': order || 0,
-              }
-            }]
+            records: [{ fields }]
           }),
         });
 
         const data = await response.json();
+        console.log('Airtable response:', JSON.stringify(data));
         if (data.error) throw new Error(data.error.message);
 
         const record = data.records[0];
@@ -293,24 +330,44 @@ export default async function handler(req, res) {
         const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
+        // Construire les champs
+        const fields = {
+          'Nom de la tâche': name,
+          'Sprint/Phase': sprint || 'Backlog',
+          'Statut': status || 'todo',
+          'Commentaire': commentaire || '',
+          'Order': order || 0,
+        };
+        
+        // Projet - essayer comme Linked Record (tableau) si c'est un recordId Airtable
+        if (projetId) {
+          if (projetId.startsWith('rec')) {
+            fields['Projet'] = [projetId];
+          } else {
+            fields['Projet'] = projetId;
+          }
+        }
+        
+        // Assigné - pareil, peut être un Linked Record
+        if (assigne) {
+          if (assigne.startsWith('rec')) {
+            fields['Assigné'] = [assigne];
+          } else {
+            fields['Assigné'] = assigne;
+          }
+        } else {
+          fields['Assigné'] = ''; // Permettre de désassigner
+        }
+        
+        // Durées
+        fields['Durée estimée'] = dureeEstimee || 0;
+        fields['Heures réelles'] = heuresReelles || 0;
+
         const response = await fetch(getAirtableUrl(TABLES.taches), {
           method: 'PATCH',
           headers,
           body: JSON.stringify({
-            records: [{
-              id,
-              fields: {
-                'Nom de la tâche': name,
-                'Projet': projetId,
-                'Sprint/Phase': sprint || 'Backlog',
-                'Assigné': assigne || '',
-                'Durée estimée': dureeEstimee || 0,
-                'Heures réelles': heuresReelles || 0,
-                'Statut': status || 'todo',
-                'Commentaire': commentaire || '',
-                'Order': order || 0,
-              }
-            }]
+            records: [{ id, fields }]
           }),
         });
 
