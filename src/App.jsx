@@ -1613,8 +1613,17 @@ export default function App() {
                         // Trouver le directeur : 1) champ Directeur (Linked Record), 2) sinon directeur du Service
                         let directeur = null;
                         if (collab.directeurId) {
-                          // Priorité au champ Directeur (Linked Record)
-                          directeur = collaborateurs.find(c => c.id === collab.directeurId || c.recordId === collab.directeurId);
+                          // Debug: afficher les valeurs pour comprendre
+                          if (collab.name === 'Maeva') {
+                            console.log('Maeva directeurId:', collab.directeurId);
+                            console.log('Séverine id:', collaborateurs.find(c => c.name === 'Séverine')?.id);
+                            console.log('Séverine recordId:', collaborateurs.find(c => c.name === 'Séverine')?.recordId);
+                          }
+                          // Priorité au champ Directeur (Linked Record) - comparer avec id ET recordId
+                          directeur = collaborateurs.find(c => 
+                            c.id === collab.directeurId || 
+                            c.recordId === collab.directeurId
+                          );
                         }
                         if (!directeur && collab.service) {
                           // Sinon, chercher le directeur du même Service
@@ -1655,7 +1664,10 @@ export default function App() {
                       if (!collab) return;
                       // 1) Directeur via Linked Record
                       if (collab.directeurId) {
-                        const dir = collaborateurs.find(c => c.id === collab.directeurId || c.recordId === collab.directeurId);
+                        const dir = collaborateurs.find(c => 
+                          c.id === collab.directeurId || 
+                          c.recordId === collab.directeurId
+                        );
                         if (dir) directeursIds.add(dir.id);
                       } 
                       // 2) Sinon directeur du Service
