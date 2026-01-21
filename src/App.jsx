@@ -187,21 +187,33 @@ export default function App() {
     setIsSaving(true);
     try {
       const method = tacheData.id ? 'PUT' : 'POST';
+      console.log('Saving tache:', JSON.stringify(tacheData));
       const response = await fetch(`${API_URL}?table=taches`, {
         method, headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tacheData),
       });
       const data = await response.json();
+      console.log('API response:', JSON.stringify(data));
+      
+      // Vérifier les erreurs
+      if (data.error) {
+        setError(`Erreur Airtable: ${data.error}`);
+        return;
+      }
+      
       if (data.tache) {
         if (tacheData.id) {
           setProjetTaches(prev => prev.map(t => t.id === data.tache.id ? data.tache : t));
         } else {
           setProjetTaches(prev => [...prev, data.tache]);
         }
+        setShowTacheModal(false);
+        setEditingTache(null);
+      } else {
+        setError('Erreur: Aucune tâche retournée par l\'API');
       }
-      setShowTacheModal(false);
-      setEditingTache(null);
     } catch (err) {
+      console.error('Save tache error:', err);
       setError(`Erreur: ${err.message}`);
     } finally {
       setIsSaving(false);
