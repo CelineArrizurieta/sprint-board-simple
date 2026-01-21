@@ -263,6 +263,12 @@ export default async function handler(req, res) {
       if (req.method === 'POST') {
         const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
         
+        console.log('POST tache - received body:', JSON.stringify(req.body));
+        
+        if (!name) {
+          return res.status(400).json({ error: 'Le nom de la tâche est requis' });
+        }
+        
         // Construire les champs - Projet peut être un Linked Record ou un texte
         const fields = {
           'Nom de la tâche': name,
@@ -296,6 +302,8 @@ export default async function handler(req, res) {
         if (heuresReelles > 0) fields['Heures réelles'] = heuresReelles;
         
         console.log('Creating tache with fields:', JSON.stringify(fields));
+        console.log('Target table:', TABLES.taches);
+        console.log('URL:', getAirtableUrl(TABLES.taches));
         
         const response = await fetch(getAirtableUrl(TABLES.taches), {
           method: 'POST',
@@ -306,8 +314,17 @@ export default async function handler(req, res) {
         });
 
         const data = await response.json();
+        console.log('Airtable response status:', response.status);
         console.log('Airtable response:', JSON.stringify(data));
-        if (data.error) throw new Error(data.error.message);
+        
+        if (data.error) {
+          console.error('Airtable error:', data.error);
+          return res.status(400).json({ error: data.error.message || JSON.stringify(data.error) });
+        }
+        
+        if (!data.records || data.records.length === 0) {
+          return res.status(500).json({ error: 'Airtable n\'a retourné aucun enregistrement' });
+        }
 
         const record = data.records[0];
         return res.status(201).json({
