@@ -548,7 +548,7 @@ export default function App() {
                       <option value="">—</option>
                       {Object.entries(collabsParService).map(([service, collabs]) => (
                         <optgroup key={service} label={service}>
-                          {collabs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {collabs.map(c => <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name}</option>)}
                         </optgroup>
                       ))}
                     </select>
