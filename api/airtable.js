@@ -38,6 +38,22 @@ const fetchAllRecords = async (tableName, headers) => {
   return allRecords;
 };
 
+// Mapping des statuts code <-> Airtable
+const STATUS_TO_AIRTABLE = {
+  'todo': 'À faire',
+  'in_progress': 'En cours',
+  'done': 'Terminé'
+};
+
+const STATUS_FROM_AIRTABLE = {
+  'À faire': 'todo',
+  'En cours': 'in_progress',
+  'Terminé': 'done'
+};
+
+const toAirtableStatus = (status) => STATUS_TO_AIRTABLE[status] || status || 'À faire';
+const fromAirtableStatus = (status) => STATUS_FROM_AIRTABLE[status] || status || 'todo';
+
 // Helper pour parser les collaborateurs
 const parseCollaborateurs = (val) => {
   if (!val) return [];
@@ -245,7 +261,7 @@ export default async function handler(req, res) {
             assigne: assigne,
             dureeEstimee: record.fields['Durée estimée'] || record.fields.DureeEstimee || 0,
             heuresReelles: record.fields['Heures réelles'] || record.fields.HeuresReelles || 0,
-            status: record.fields.Statut || record.fields.Status || 'todo',
+            status: fromAirtableStatus(record.fields.Statut || record.fields.Status),
             commentaire: record.fields.Commentaire || '',
             order: record.fields.Order || 0,
           };
@@ -273,7 +289,7 @@ export default async function handler(req, res) {
         const fields = {
           'Nom de la tâche': name,
           'Sprint/Phase': sprint || 'Backlog',
-          'Statut': status || 'todo',
+          'Statut': toAirtableStatus(status),
           'Commentaire': commentaire || '',
           'Order': order || 0,
         };
@@ -336,7 +352,7 @@ export default async function handler(req, res) {
             assigne: record.fields['Assigné'] || '',
             dureeEstimee: record.fields['Durée estimée'] || 0,
             heuresReelles: record.fields['Heures réelles'] || 0,
-            status: record.fields.Statut || 'todo',
+            status: fromAirtableStatus(record.fields.Statut),
             commentaire: record.fields.Commentaire || '',
             order: record.fields.Order || 0,
           }
@@ -351,7 +367,7 @@ export default async function handler(req, res) {
         const fields = {
           'Nom de la tâche': name,
           'Sprint/Phase': sprint || 'Backlog',
-          'Statut': status || 'todo',
+          'Statut': toAirtableStatus(status),
           'Commentaire': commentaire || '',
           'Order': order || 0,
         };
@@ -401,7 +417,7 @@ export default async function handler(req, res) {
             assigne: record.fields['Assigné'] || '',
             dureeEstimee: record.fields['Durée estimée'] || 0,
             heuresReelles: record.fields['Heures réelles'] || 0,
-            status: record.fields.Statut || 'todo',
+            status: fromAirtableStatus(record.fields.Statut),
             commentaire: record.fields.Commentaire || '',
             order: record.fields.Order || 0,
           }
