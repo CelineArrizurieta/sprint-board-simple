@@ -39,22 +39,27 @@ const STATUTS = [
 
 const SPRINTS = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Backlog'];
 
-// Pôles pour la vue Équipage
+// Pôles pour la vue Équipage (sans icônes)
 const POLES = {
-  'Présidence': { color: '#7C3AED', bgLight: '#F3E8FF', icon: '👑' },
-  'Conseil': { color: '#6366F1', bgLight: '#E0E7FF', icon: '💼' },
-  'Direction Générale': { color: '#7C3AED', bgLight: '#F3E8FF', icon: '👑' },
-  'Informatique': { color: '#3B82F6', bgLight: '#DBEAFE', icon: '💻' },
-  'Datacenter': { color: '#0EA5E9', bgLight: '#E0F2FE', icon: '🖥️' },
-  'Production': { color: '#F59E0B', bgLight: '#FEF3C7', icon: '⚙️' },
-  'Production & Innovation': { color: '#8B5CF6', bgLight: '#EDE9FE', icon: '🚀' },
-  'Animation': { color: '#EC4899', bgLight: '#FCE7F3', icon: '🎨' },
-  'Innovation': { color: '#8B5CF6', bgLight: '#EDE9FE', icon: '🚀' },
-  'Développement Commercial': { color: '#10B981', bgLight: '#D1FAE5', icon: '📈' },
-  'Développement et Marketing': { color: '#10B981', bgLight: '#D1FAE5', icon: '📈' },
-  'Communication': { color: '#F97316', bgLight: '#FFEDD5', icon: '📢' },
-  'Admin & RH': { color: '#64748B', bgLight: '#F1F5F9', icon: '📋' },
-  'Autre': { color: '#6B7280', bgLight: '#F3F4F6', icon: '👤' },
+  'Présidence': { color: '#7C3AED', bgLight: '#F3E8FF' },
+  'Direction Générale': { color: '#7C3AED', bgLight: '#F3E8FF' }, // Alias vers Présidence
+  'Conseil': { color: '#6366F1', bgLight: '#E0E7FF' },
+  'Informatique': { color: '#3B82F6', bgLight: '#DBEAFE' },
+  'Datacenter': { color: '#0EA5E9', bgLight: '#E0F2FE' },
+  'Production': { color: '#F59E0B', bgLight: '#FEF3C7' },
+  'Production & Innovation': { color: '#8B5CF6', bgLight: '#EDE9FE' },
+  'Animation': { color: '#EC4899', bgLight: '#FCE7F3' },
+  'Innovation': { color: '#8B5CF6', bgLight: '#EDE9FE' },
+  'Développement Commercial': { color: '#10B981', bgLight: '#D1FAE5' },
+  'Développement et Marketing': { color: '#10B981', bgLight: '#D1FAE5' },
+  'Communication': { color: '#F97316', bgLight: '#FFEDD5' },
+  'Admin & RH': { color: '#64748B', bgLight: '#F1F5F9' },
+  'Autre': { color: '#6B7280', bgLight: '#F3F4F6' },
+};
+
+// Mapping pour renommer certains pôles à l'affichage
+const POLES_DISPLAY_NAME = {
+  'Direction Générale': 'Présidence',
 };
 
 const POLES_ORDER = [
@@ -1201,7 +1206,7 @@ export default function App() {
                     >
                       <option value="">Tous les pôles</option>
                       {[...new Set(collaborateurs.map(c => c.service).filter(Boolean))].sort().map(service => (
-                        <option key={service} value={service}>{POLES[service]?.icon || '👤'} {service}</option>
+                        <option key={service} value={service}>{POLES_DISPLAY_NAME[service] || service}</option>
                       ))}
                     </select>
                     
@@ -1272,11 +1277,11 @@ export default function App() {
                   
                   return Object.entries(collabsByPole).map(([pole, collabs]) => {
                     const poleInfo = POLES[pole] || POLES['Autre'];
+                    const displayName = POLES_DISPLAY_NAME[pole] || pole; // Utiliser le nom d'affichage si défini
                     return (
                       <div key={pole} className="bg-white rounded-lg shadow overflow-hidden">
                         <div className="p-4 border-b flex items-center gap-3" style={{ backgroundColor: poleInfo.bgLight }}>
-                          <span className="text-2xl">{poleInfo.icon}</span>
-                          <h2 className="text-lg font-bold" style={{ color: poleInfo.color }}>{pole}</h2>
+                          <h2 className="text-lg font-bold" style={{ color: poleInfo.color }}>{displayName}</h2>
                           <span className="px-2 py-1 bg-white/50 rounded-full text-sm" style={{ color: poleInfo.color }}>{collabs.length}</span>
                         </div>
                         
@@ -1388,8 +1393,7 @@ export default function App() {
                     <div>
                       <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Pôle</h3>
                       <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: poleInfo.bgLight }}>
-                        <span className="text-xl">{poleInfo.icon}</span>
-                        <span className="font-medium" style={{ color: poleInfo.color }}>{collab.service || 'Non défini'}</span>
+                        <span className="font-medium" style={{ color: poleInfo.color }}>{POLES_DISPLAY_NAME[collab.service] || collab.service || 'Non défini'}</span>
                       </div>
                     </div>
                     
