@@ -1610,8 +1610,16 @@ export default function App() {
                     <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 border rounded-lg">
                       {collaborateurs.map(collab => {
                         const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
-                        // Trouver le directeur de ce collaborateur par son Service (EstDirecteur + même Service)
-                        const directeur = collab.service ? collaborateurs.find(c => c.estDirecteur && c.service === collab.service && c.id !== collab.id) : null;
+                        // Trouver le directeur : 1) champ Directeur (Linked Record), 2) sinon directeur du Service
+                        let directeur = null;
+                        if (collab.directeurId) {
+                          // Priorité au champ Directeur (Linked Record)
+                          directeur = collaborateurs.find(c => c.id === collab.directeurId || c.recordId === collab.directeurId);
+                        }
+                        if (!directeur && collab.service) {
+                          // Sinon, chercher le directeur du même Service
+                          directeur = collaborateurs.find(c => c.estDirecteur && c.service === collab.service && c.id !== collab.id);
+                        }
                         return (
                           <button key={collab.id} type="button"
                             onClick={() => {
@@ -1637,18 +1645,26 @@ export default function App() {
                       })}
                     </div>
                   </div>
-                  {/* Directeurs concernés - calculé automatiquement par Service */}
+                  {/* Directeurs concernés - calculé automatiquement */}
                   {(() => {
                     const currentCollabs = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                    // Trouver tous les services des collaborateurs sélectionnés
-                    const servicesUtilises = [...new Set(currentCollabs.map(collabId => {
+                    // Trouver tous les directeurs des collaborateurs sélectionnés
+                    const directeursIds = new Set();
+                    currentCollabs.forEach(collabId => {
                       const collab = collaborateurs.find(c => c.id === collabId);
-                      return collab?.service;
-                    }).filter(Boolean))];
-                    // Trouver les directeurs de ces services
-                    const directeursConcernes = collaborateurs.filter(c => 
-                      c.estDirecteur && servicesUtilises.includes(c.service)
-                    );
+                      if (!collab) return;
+                      // 1) Directeur via Linked Record
+                      if (collab.directeurId) {
+                        const dir = collaborateurs.find(c => c.id === collab.directeurId || c.recordId === collab.directeurId);
+                        if (dir) directeursIds.add(dir.id);
+                      } 
+                      // 2) Sinon directeur du Service
+                      else if (collab.service) {
+                        const dir = collaborateurs.find(c => c.estDirecteur && c.service === collab.service && c.id !== collab.id);
+                        if (dir) directeursIds.add(dir.id);
+                      }
+                    });
+                    const directeursConcernes = collaborateurs.filter(c => directeursIds.has(c.id));
                     if (directeursConcernes.length === 0) return null;
                     return (
                       <div className="mt-3 p-2 bg-purple-50 rounded-lg border border-purple-200">
