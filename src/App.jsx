@@ -272,7 +272,11 @@ export default function App() {
     return axes.find(a => a.id === chantier?.axeId);
   };
   const getChantier = (chantierId) => chantiers.find(c => c.id === chantierId);
-  const getCollab = (collabId) => collaborateurs.find(c => c.id === collabId);
+  // Recherche collaborateur par id OU recordId (pour compatibilité Airtable Linked Records)
+  const getCollab = (collabId) => {
+    if (!collabId) return null;
+    return collaborateurs.find(c => c.id === collabId || c.recordId === collabId);
+  };
   const getProjetsForWeek = (weekNum, chantierId) => projets.filter(p => {
     if (p.chantierId !== chantierId) return false;
     return weekNum >= (p.weekStart || 1) && weekNum <= (p.weekEnd || p.weekStart || 1);
@@ -483,28 +487,43 @@ export default function App() {
                           <div className="divide-y">
                             {sprintTaches.map(tache => {
                               const assigne = getCollab(tache.assigne);
+                              const isDone = tache.status === 'done';
                               return (
-                                <div key={tache.id} draggable onDragStart={(e) => handleDragStart(e, tache)} onDragEnd={handleDragEnd}
-                                  className="p-4 hover:bg-gray-50 flex items-center gap-4 cursor-grab active:cursor-grabbing">
-                                  <div className="text-gray-400">⋮⋮</div>
-                                  <button onClick={() => toggleTacheStatus(tache)}
-                                    className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${tache.status === 'done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 hover:border-green-500'}`}>
-                                    {tache.status === 'done' && '✓'}
-                                  </button>
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`font-medium truncate ${tache.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
-                                    {tache.commentaire && <div className="text-sm text-gray-500 truncate">{tache.commentaire}</div>}
+                                <div key={tache.id} draggable="true" onDragStart={(e) => handleDragStart(e, tache)} onDragEnd={handleDragEnd}
+                                  className={`p-4 hover:bg-gray-50 flex items-center gap-4 cursor-grab active:cursor-grabbing transition-all ${draggedTache?.id === tache.id ? 'opacity-50 bg-purple-50' : ''}`}>
+                                  <div className="text-gray-400 cursor-grab">⋮⋮</div>
+                                  {/* Photo du collaborateur assigné à gauche */}
+                                  <div className="flex-shrink-0" onClick={() => toggleTacheStatus(tache)} title={isDone ? "Marquer à faire" : "Marquer terminé"}>
+                                    {assigne ? (
+                                      <div className={`relative ${isDone ? 'opacity-60' : ''}`}>
+                                        {assigne.photo ? (
+                                          <img src={assigne.photo} alt={assigne.name} className={`w-10 h-10 rounded-full object-cover border-2 ${isDone ? 'border-green-500' : 'border-gray-200 hover:border-purple-400'} cursor-pointer transition-all`} />
+                                        ) : (
+                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm border-2 ${isDone ? 'border-green-500' : 'border-transparent hover:border-purple-400'} cursor-pointer transition-all`} 
+                                            style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>
+                                        )}
+                                        {isDone && (
+                                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className={`w-10 h-10 rounded-full border-2 border-dashed ${isDone ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-purple-400'} flex items-center justify-center cursor-pointer transition-all`}>
+                                        {isDone ? <span className="text-green-500 text-lg">✓</span> : <span className="text-gray-400 text-lg">?</span>}
+                                      </div>
+                                    )}
                                   </div>
-                                  <div className="text-sm text-gray-500 flex-shrink-0">⏱️{tache.dureeEstimee}h ✅{tache.heuresReelles}h</div>
-                                  {assigne ? (
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                      {assigne.photo ? <img src={assigne.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
-                                        : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>}
-                                    </div>
-                                  ) : <span className="text-sm text-gray-400">—</span>}
+                                  <div className="flex-1 min-w-0">
+                                    <div className={`font-medium truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
+                                    {tache.commentaire && <div className="text-sm text-gray-500 truncate">{tache.commentaire}</div>}
+                                    {assigne && <div className="text-xs text-gray-400 mt-1">{assigne.name}</div>}
+                                  </div>
+                                  <div className="text-sm text-gray-500 flex-shrink-0 text-right">
+                                    <div>⏱️ {tache.dureeEstimee}h estimé</div>
+                                    <div>✅ {tache.heuresReelles}h réel</div>
+                                  </div>
                                   <div className="flex gap-1 flex-shrink-0">
-                                    <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded">✏️</button>
-                                    <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded">🗑️</button>
+                                    <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Modifier">✏️</button>
+                                    <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
                                   </div>
                                 </div>
                               );
@@ -520,11 +539,158 @@ export default function App() {
           </div>
         </div>
 
+        {/* Modal Projet - accessible depuis la vue détail */}
+        {showProjetModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+              <div className="flex items-center justify-between p-6 pb-4 border-b">
+                <h3 className="text-xl font-bold">{editingProjet ? '✏️ Modifier le projet' : '➕ Nouveau projet'}</h3>
+                {editingProjet && (
+                  <button onClick={() => { setShowProjetModal(false); setSelectedProjet(editingProjet); }} 
+                    className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200">
+                    🔍 Détail
+                  </button>
+                )}
+              </div>
+              <div className="overflow-y-auto flex-1 p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom du projet *</label>
+                  <input type="text" value={editingProjet?.name || newProjet.name}
+                    onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, name: e.target.value }) : setNewProjet({ ...newProjet, name: e.target.value })}
+                    className="w-full p-3 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Objectif</label>
+                  <textarea value={editingProjet?.objectif || newProjet.objectif}
+                    onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, objectif: e.target.value }) : setNewProjet({ ...newProjet, objectif: e.target.value })}
+                    rows={2} className="w-full p-3 border rounded-lg" placeholder="Objectif du projet" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Chantier *</label>
+                  <select value={editingProjet?.chantierId || newProjet.chantierId}
+                    onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, chantierId: e.target.value }) : setNewProjet({ ...newProjet, chantierId: e.target.value })}
+                    className="w-full p-3 border rounded-lg">
+                    <option value="">-- Sélectionner --</option>
+                    {axes.map(axe => (
+                      <optgroup key={axe.id} label={`${axe.icon} ${axe.name}`}>
+                        {chantiers.filter(c => c.axeId === axe.id).map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Semaine début</label>
+                    <select value={editingProjet?.weekStart || newProjet.weekStart}
+                      onChange={(e) => { const val = parseInt(e.target.value); editingProjet ? setEditingProjet({ ...editingProjet, weekStart: val, weekEnd: Math.max(val, editingProjet.weekEnd || val) }) : setNewProjet({ ...newProjet, weekStart: val, weekEnd: Math.max(val, newProjet.weekEnd) }); }}
+                      className="w-full p-3 border rounded-lg">
+                      {WEEKS.map(w => <option key={w.num} value={w.num}>S{w.num} ({w.dates})</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Semaine fin</label>
+                    <select value={editingProjet?.weekEnd || newProjet.weekEnd}
+                      onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, weekEnd: parseInt(e.target.value) }) : setNewProjet({ ...newProjet, weekEnd: parseInt(e.target.value) })}
+                      className="w-full p-3 border rounded-lg">
+                      {WEEKS.filter(w => w.num >= (editingProjet?.weekStart || newProjet.weekStart)).map(w => <option key={w.num} value={w.num}>S{w.num} ({w.dates})</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                  <div className="flex gap-2">
+                    {STATUTS.map(statut => (
+                      <button key={statut.id} type="button"
+                        onClick={() => editingProjet ? setEditingProjet({ ...editingProjet, status: statut.id }) : setNewProjet({ ...newProjet, status: statut.id })}
+                        className={`flex-1 p-3 rounded-lg border-2 ${(editingProjet?.status || newProjet.status) === statut.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
+                        <div className="text-xl mb-1">{statut.icon}</div>
+                        <div className="text-xs">{statut.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t pt-4">
+                  <h4 className="font-semibold text-gray-800 mb-3">👥 Équipe</h4>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">🏅 Meneur</label>
+                      <select value={editingProjet?.meneur || newProjet.meneur}
+                        onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, meneur: e.target.value }) : setNewProjet({ ...newProjet, meneur: e.target.value })}
+                        className="w-full p-2 border rounded-lg text-sm">
+                        <option value="">—</option>
+                        {Object.entries(collabsParService).map(([service, collabs]) => (
+                          <optgroup key={service} label={service}>
+                            {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">🎯 Référent Comité IA</label>
+                      <select value={editingProjet?.referentComiteIA || newProjet.referentComiteIA}
+                        onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, referentComiteIA: e.target.value }) : setNewProjet({ ...newProjet, referentComiteIA: e.target.value })}
+                        className="w-full p-2 border rounded-lg text-sm">
+                        <option value="">—</option>
+                        {membresComiteIA.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">🔒 Référent Conformité</label>
+                      <select value={editingProjet?.referentConformite || newProjet.referentConformite}
+                        onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, referentConformite: e.target.value }) : setNewProjet({ ...newProjet, referentConformite: e.target.value })}
+                        className="w-full p-2 border rounded-lg text-sm">
+                        <option value="">—</option>
+                        {membresConformite.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">🏃 Équipe</label>
+                      <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 border rounded-lg">
+                        {collaborateurs.map(collab => {
+                          const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
+                          return (
+                            <button key={collab.id} type="button"
+                              onClick={() => {
+                                const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                                const updated = isSelected ? current.filter(id => id !== collab.id) : [...current, collab.id];
+                                editingProjet ? setEditingProjet({ ...editingProjet, collaborateurs: updated }) : setNewProjet({ ...newProjet, collaborateurs: updated });
+                              }}
+                              className={`px-2 py-1 rounded text-xs ${isSelected ? 'text-white' : 'bg-gray-100 text-gray-700'}`}
+                              style={isSelected ? { backgroundColor: collab.color } : {}}>
+                              {collab.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                  <textarea value={editingProjet?.commentaire || newProjet.commentaire}
+                    onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, commentaire: e.target.value }) : setNewProjet({ ...newProjet, commentaire: e.target.value })}
+                    rows={2} className="w-full p-3 border rounded-lg" />
+                </div>
+              </div>
+              <div className="flex gap-3 p-6 pt-4 border-t">
+                <button onClick={() => { setShowProjetModal(false); setEditingProjet(null); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
+                <button onClick={() => {
+                  const data = editingProjet || newProjet;
+                  if (!data.name || !data.chantierId) { alert('Nom et chantier requis'); return; }
+                  saveProjet(data);
+                }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                  {isSaving ? '⏳' : (editingProjet ? 'Modifier' : 'Créer')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {showTacheModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
               <h3 className="text-xl font-bold p-6 pb-4 border-b">{editingTache ? '✏️ Modifier la tâche' : '➕ Nouvelle tâche'}</h3>
-              <div className="p-6 space-y-4">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
                   <input type="text" value={editingTache?.name || newTache.name}
@@ -542,16 +708,48 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Assigné</label>
-                    <select value={editingTache?.assigne || newTache.assigne}
-                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
-                      className="w-full p-3 border rounded-lg">
-                      <option value="">—</option>
-                      {Object.entries(collabsParService).map(([service, collabs]) => (
-                        <optgroup key={service} label={service}>
-                          {collabs.map(c => <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
+                    {(() => {
+                      // Séparer l'équipe du projet des autres collaborateurs
+                      const equipeProjetIds = selectedProjet?.collaborateurs || [];
+                      const meneurId = selectedProjet?.meneur;
+                      const refIAId = selectedProjet?.referentComiteIA;
+                      const refConfId = selectedProjet?.referentConformite;
+                      const allEquipeIds = [...new Set([meneurId, refIAId, refConfId, ...equipeProjetIds].filter(Boolean))];
+                      
+                      const equipeProjet = allEquipeIds.map(id => getCollab(id)).filter(Boolean);
+                      const autresCollabs = collaborateurs.filter(c => !allEquipeIds.includes(c.id) && !allEquipeIds.includes(c.recordId));
+                      
+                      // Grouper les autres par service
+                      const autresParService = autresCollabs.reduce((acc, c) => {
+                        const service = c.service || 'Autre';
+                        if (!acc[service]) acc[service] = [];
+                        acc[service].push(c);
+                        return acc;
+                      }, {});
+                      
+                      return (
+                        <select value={editingTache?.assigne || newTache.assigne}
+                          onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
+                          className="w-full p-3 border rounded-lg">
+                          <option value="">— Non assigné —</option>
+                          {equipeProjet.length > 0 && (
+                            <optgroup label="👥 Équipe du projet">
+                              {equipeProjet.map(c => (
+                                <option key={c.recordId || c.id} value={c.recordId || c.id}>
+                                  {c.name}{c.id === meneurId || c.recordId === meneurId ? ' 🏅' : ''}{c.id === refIAId || c.recordId === refIAId ? ' 🎯' : ''}{c.id === refConfId || c.recordId === refConfId ? ' 🔒' : ''}
+                                </option>
+                              ))}
+                            </optgroup>
+                          )}
+                          <optgroup label="───────────────"></optgroup>
+                          {Object.entries(autresParService).map(([service, collabs]) => (
+                            <optgroup key={service} label={`🏢 ${service}`}>
+                              {collabs.map(c => <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name}</option>)}
+                            </optgroup>
+                          ))}
+                        </select>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
