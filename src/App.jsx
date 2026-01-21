@@ -39,6 +39,30 @@ const STATUTS = [
 
 const SPRINTS = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Backlog'];
 
+// Pôles pour la vue Équipage
+const POLES = {
+  'Présidence': { color: '#7C3AED', bgLight: '#F3E8FF', icon: '👑' },
+  'Conseil': { color: '#6366F1', bgLight: '#E0E7FF', icon: '💼' },
+  'Direction Générale': { color: '#7C3AED', bgLight: '#F3E8FF', icon: '👑' },
+  'Informatique': { color: '#3B82F6', bgLight: '#DBEAFE', icon: '💻' },
+  'Datacenter': { color: '#0EA5E9', bgLight: '#E0F2FE', icon: '🖥️' },
+  'Production': { color: '#F59E0B', bgLight: '#FEF3C7', icon: '⚙️' },
+  'Production & Innovation': { color: '#8B5CF6', bgLight: '#EDE9FE', icon: '🚀' },
+  'Animation': { color: '#EC4899', bgLight: '#FCE7F3', icon: '🎨' },
+  'Innovation': { color: '#8B5CF6', bgLight: '#EDE9FE', icon: '🚀' },
+  'Développement Commercial': { color: '#10B981', bgLight: '#D1FAE5', icon: '📈' },
+  'Développement et Marketing': { color: '#10B981', bgLight: '#D1FAE5', icon: '📈' },
+  'Communication': { color: '#F97316', bgLight: '#FFEDD5', icon: '📢' },
+  'Admin & RH': { color: '#64748B', bgLight: '#F1F5F9', icon: '📋' },
+  'Autre': { color: '#6B7280', bgLight: '#F3F4F6', icon: '👤' },
+};
+
+const POLES_ORDER = [
+  'Présidence', 'Direction Générale', 'Conseil', 'Production & Innovation', 'Innovation',
+  'Informatique', 'Datacenter', 'Production', 'Animation', 
+  'Développement Commercial', 'Développement et Marketing', 'Communication', 'Admin & RH', 'Autre'
+];
+
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
@@ -80,6 +104,12 @@ export default function App() {
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   const [newDocument, setNewDocument] = useState({ name: '', url: '', type: 'onedrive' });
   const [savingDocument, setSavingDocument] = useState(false);
+  
+  // Équipage state
+  const [equipageSearch, setEquipageSearch] = useState('');
+  const [equipagePoleFilter, setEquipagePoleFilter] = useState('');
+  const [equipageRoleFilter, setEquipageRoleFilter] = useState('');
+  const [selectedCollaborateur, setSelectedCollaborateur] = useState(null);
 
   const handleLogin = () => {
     if (passwordInput === 'ApiYou2026') {
@@ -991,7 +1021,8 @@ export default function App() {
         <div className="flex">
           <button onClick={() => setActiveTab('planning')} className={`px-6 py-3 font-medium ${activeTab === 'planning' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>📊 Planning Visuel</button>
           <button onClick={() => setActiveTab('projets')} className={`px-6 py-3 font-medium ${activeTab === 'projets' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>📋 Gestion des Projets</button>
-          <div className="ml-auto px-4 py-3 text-sm text-gray-500">{projets.length} projet(s) • {chantiers.length} chantier(s)</div>
+          <button onClick={() => setActiveTab('equipage')} className={`px-6 py-3 font-medium ${activeTab === 'equipage' ? 'bg-purple-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>👥 Équipage</button>
+          <div className="ml-auto px-4 py-3 text-sm text-gray-500">{projets.length} projet(s) • {collaborateurs.length} talent(s)</div>
         </div>
       </div>
 
@@ -1145,9 +1176,326 @@ export default function App() {
                 })}
               </div>
             )}
+
+            {activeTab === 'equipage' && (
+              <div className="space-y-6">
+                {/* Filtres Équipage */}
+                <div className="bg-white rounded-lg shadow p-4">
+                  <div className="flex flex-wrap gap-4 items-center">
+                    {/* Recherche */}
+                    <div className="flex-1 min-w-[200px]">
+                      <input
+                        type="text"
+                        placeholder="🔍 Rechercher un collaborateur..."
+                        value={equipageSearch}
+                        onChange={(e) => setEquipageSearch(e.target.value)}
+                        className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200"
+                      />
+                    </div>
+                    
+                    {/* Filtre Pôle/Service */}
+                    <select
+                      value={equipagePoleFilter}
+                      onChange={(e) => setEquipagePoleFilter(e.target.value)}
+                      className="px-4 py-2 border rounded-lg focus:outline-none focus:border-purple-500"
+                    >
+                      <option value="">Tous les pôles</option>
+                      {[...new Set(collaborateurs.map(c => c.service).filter(Boolean))].sort().map(service => (
+                        <option key={service} value={service}>{POLES[service]?.icon || '👤'} {service}</option>
+                      ))}
+                    </select>
+                    
+                    {/* Filtres rapides */}
+                    <div className="flex gap-2 flex-wrap">
+                      {[
+                        { id: '', label: 'Tous', icon: '👥' },
+                        { id: 'comiteStrategiqueIA', label: 'Comité Stratégique IA', icon: '🤖' },
+                        { id: 'commissionConformite', label: 'Commission Conformité IA', icon: '🔒' },
+                        { id: 'directeur', label: 'Directeurs', icon: '⭐' },
+                      ].map(f => (
+                        <button
+                          key={f.id}
+                          onClick={() => setEquipageRoleFilter(f.id)}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            equipageRoleFilter === f.id 
+                              ? 'bg-purple-600 text-white' 
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {f.icon} {f.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Grille par pôle */}
+                {(() => {
+                  // Filtrer les collaborateurs
+                  const filteredCollabs = collaborateurs.filter(c => {
+                    const matchSearch = c.name?.toLowerCase().includes(equipageSearch.toLowerCase()) ||
+                                        c.role?.toLowerCase().includes(equipageSearch.toLowerCase());
+                    const matchPole = !equipagePoleFilter || c.service === equipagePoleFilter;
+                    const matchRole = !equipageRoleFilter || 
+                      (equipageRoleFilter === 'comiteStrategiqueIA' && c.estComiteStrategiqueIA) ||
+                      (equipageRoleFilter === 'commissionConformite' && c.estCommissionConformite) ||
+                      (equipageRoleFilter === 'directeur' && c.estDirecteur);
+                    return matchSearch && matchPole && matchRole;
+                  });
+                  
+                  // Grouper par service/pôle
+                  const collabsByPole = {};
+                  const services = [...new Set(filteredCollabs.map(c => c.service || 'Autre'))];
+                  
+                  // Trier les services selon POLES_ORDER
+                  services.sort((a, b) => {
+                    const indexA = POLES_ORDER.indexOf(a);
+                    const indexB = POLES_ORDER.indexOf(b);
+                    if (indexA === -1 && indexB === -1) return a.localeCompare(b);
+                    if (indexA === -1) return 1;
+                    if (indexB === -1) return -1;
+                    return indexA - indexB;
+                  });
+                  
+                  services.forEach(service => {
+                    collabsByPole[service] = filteredCollabs.filter(c => (c.service || 'Autre') === service);
+                  });
+                  
+                  if (filteredCollabs.length === 0) {
+                    return (
+                      <div className="text-center py-12 bg-white rounded-lg shadow">
+                        <span className="text-4xl">🔍</span>
+                        <p className="text-gray-500 mt-4">Aucun collaborateur trouvé</p>
+                      </div>
+                    );
+                  }
+                  
+                  return Object.entries(collabsByPole).map(([pole, collabs]) => {
+                    const poleInfo = POLES[pole] || POLES['Autre'];
+                    return (
+                      <div key={pole} className="bg-white rounded-lg shadow overflow-hidden">
+                        <div className="p-4 border-b flex items-center gap-3" style={{ backgroundColor: poleInfo.bgLight }}>
+                          <span className="text-2xl">{poleInfo.icon}</span>
+                          <h2 className="text-lg font-bold" style={{ color: poleInfo.color }}>{pole}</h2>
+                          <span className="px-2 py-1 bg-white/50 rounded-full text-sm" style={{ color: poleInfo.color }}>{collabs.length}</span>
+                        </div>
+                        
+                        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                          {collabs.map(collab => {
+                            const isSelected = selectedCollaborateur?.id === collab.id;
+                            return (
+                              <div 
+                                key={collab.id}
+                                onClick={() => setSelectedCollaborateur(collab)}
+                                className={`p-3 rounded-xl cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 border-2 ${
+                                  isSelected ? 'border-purple-500 bg-purple-50' : 'border-transparent bg-gray-50 hover:bg-white'
+                                }`}
+                              >
+                                <div className="flex flex-col items-center text-center">
+                                  {collab.photo ? (
+                                    <img src={collab.photo} alt={collab.name} className="w-14 h-14 rounded-full object-cover shadow-md" />
+                                  ) : (
+                                    <div className="w-14 h-14 rounded-full flex items-center justify-center text-white font-semibold shadow-md text-lg"
+                                      style={{ backgroundColor: collab.color || poleInfo.color }}>
+                                      {collab.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                    </div>
+                                  )}
+                                  <h3 className="font-semibold text-gray-800 mt-2 text-sm leading-tight">{collab.name}</h3>
+                                  <p className="text-xs text-gray-500 mt-1 line-clamp-2">{collab.role}</p>
+                                  
+                                  {/* Badges */}
+                                  <div className="flex gap-1 mt-2 flex-wrap justify-center">
+                                    {collab.estComiteStrategiqueIA && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-blue-500 text-white font-semibold">Comité IA</span>
+                                    )}
+                                    {collab.estCommissionConformite && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500 text-white font-semibold">Conformité</span>
+                                    )}
+                                    {collab.estDirecteur && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500 text-white font-semibold">Directeur</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
           </>
         )}
       </div>
+
+      {/* Panneau détail collaborateur */}
+      {selectedCollaborateur && (
+        <>
+          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setSelectedCollaborateur(null)} />
+          <div className="fixed inset-y-0 right-0 w-full max-w-md bg-white shadow-2xl z-50 overflow-y-auto animate-slide-in">
+            {(() => {
+              const collab = selectedCollaborateur;
+              const poleInfo = POLES[collab.service] || POLES['Autre'];
+              const directeur = collaborateurs.find(c => c.name === collab.directeur || c.id === collab.directeurId);
+              const equipe = collaborateurs.filter(c => c.directeur === collab.name || c.directeurId === collab.id);
+              const collabProjets = projets.filter(p => 
+                p.collaborateurs?.includes(collab.id) || 
+                p.collaborateurs?.includes(collab.recordId) ||
+                p.meneur === collab.id ||
+                p.referentComiteIA === collab.id ||
+                p.referentConformite === collab.id
+              );
+              
+              return (
+                <>
+                  {/* Header */}
+                  <div className="p-6 text-white" style={{ backgroundColor: poleInfo.color }}>
+                    <button 
+                      onClick={() => setSelectedCollaborateur(null)}
+                      className="absolute top-4 right-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 text-white"
+                    >
+                      ✕
+                    </button>
+                    
+                    <div className="flex items-center gap-4 mt-4">
+                      {collab.photo ? (
+                        <img src={collab.photo} alt={collab.name} className="w-24 h-24 rounded-full object-cover border-4 border-white/30 shadow-lg" />
+                      ) : (
+                        <div className="w-24 h-24 rounded-full flex items-center justify-center text-3xl font-bold border-4 border-white/30 shadow-lg"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.2)' }}>
+                          {collab.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                        </div>
+                      )}
+                      <div>
+                        <h2 className="text-2xl font-bold">{collab.name}</h2>
+                        <p className="text-white/80">{collab.role}</p>
+                        <div className="flex gap-1 mt-2 flex-wrap">
+                          {collab.estComiteStrategiqueIA && (
+                            <span className="text-xs px-2 py-1 rounded bg-white/20 font-semibold">🤖 Comité Stratégique IA</span>
+                          )}
+                          {collab.estCommissionConformite && (
+                            <span className="text-xs px-2 py-1 rounded bg-white/20 font-semibold">🔒 Commission Conformité IA</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="p-6 space-y-6">
+                    {/* Pôle */}
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Pôle</h3>
+                      <div className="flex items-center gap-2 p-3 rounded-lg" style={{ backgroundColor: poleInfo.bgLight }}>
+                        <span className="text-xl">{poleInfo.icon}</span>
+                        <span className="font-medium" style={{ color: poleInfo.color }}>{collab.service || 'Non défini'}</span>
+                      </div>
+                    </div>
+                    
+                    {/* Directeur */}
+                    {directeur && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">👔 Rattaché à</h3>
+                        <div 
+                          className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
+                          onClick={() => setSelectedCollaborateur(directeur)}
+                        >
+                          {directeur.photo ? (
+                            <img src={directeur.photo} alt={directeur.name} className="w-10 h-10 rounded-full object-cover" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm"
+                              style={{ backgroundColor: POLES[directeur.service]?.color || '#6B7280' }}>
+                              {directeur.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                            </div>
+                          )}
+                          <div>
+                            <p className="font-medium text-gray-800">{directeur.name}</p>
+                            <p className="text-xs text-gray-500">{directeur.role}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Équipe */}
+                    {equipe.length > 0 && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">👥 Son équipe ({equipe.length})</h3>
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {equipe.slice(0, 10).map(membre => (
+                            <div 
+                              key={membre.id} 
+                              className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
+                              onClick={() => setSelectedCollaborateur(membre)}
+                            >
+                              {membre.photo ? (
+                                <img src={membre.photo} alt={membre.name} className="w-8 h-8 rounded-full object-cover" />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs"
+                                  style={{ backgroundColor: POLES[membre.service]?.color || '#6B7280' }}>
+                                  {membre.name?.split(' ').map(n => n[0]).join('').slice(0, 2)}
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-medium text-gray-800 text-sm">{membre.name}</p>
+                                <p className="text-xs text-gray-500">{membre.role}</p>
+                              </div>
+                            </div>
+                          ))}
+                          {equipe.length > 10 && (
+                            <p className="text-sm text-gray-500 text-center py-2">+ {equipe.length - 10} autres</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Projets */}
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">📋 Projets assignés</h3>
+                      {collabProjets.length === 0 ? (
+                        <p className="text-gray-400 text-sm p-3 bg-gray-50 rounded-lg">Aucun projet en cours</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {collabProjets.map(projet => {
+                            const chantier = chantiers.find(c => c.id === projet.chantierId);
+                            const axe = axes.find(a => a.id === chantier?.axeId);
+                            return (
+                              <div 
+                                key={projet.id} 
+                                className="p-3 bg-purple-50 rounded-lg border border-purple-100 cursor-pointer hover:bg-purple-100"
+                                onClick={() => { setSelectedCollaborateur(null); setSelectedProjet(projet); }}
+                              >
+                                <p className="font-medium text-purple-800">{projet.name}</p>
+                                <p className="text-xs text-purple-600 mt-1">{axe?.icon} {chantier?.name}</p>
+                                <div className="flex items-center gap-2 mt-2">
+                                  <span className="text-xs text-gray-500">S{projet.weekStart} → S{projet.weekEnd}</span>
+                                  {projet.meneur === collab.id && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">🏅 Meneur</span>}
+                                  {projet.referentComiteIA === collab.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">🎯 Réf. IA</span>}
+                                  {projet.referentConformite === collab.id && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">🔒 Réf. Conf.</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Contact */}
+                    {collab.email && (
+                      <div>
+                        <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">📧 Contact</h3>
+                        <div className="p-3 bg-gray-50 rounded-lg">
+                          <a href={`mailto:${collab.email}`} className="text-sm text-blue-600 hover:underline">{collab.email}</a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </>
+      )}
 
       {showProjetModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
