@@ -116,21 +116,40 @@ export default async function handler(req, res) {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.items, headers);
         
-        const items = records.map(record => ({
-          id: record.id,
-          name: record.fields.Name || '',
-          chantierId: record.fields.ChantierId || '',
-          weekStart: record.fields.WeekStart || 1,
-          weekEnd: record.fields.WeekEnd || record.fields.WeekStart || 1,
-          collaborateurs: parseCollaborateurs(record.fields.CollaborateursParRole),
-          status: record.fields.Status || 'todo',
-          commentaire: record.fields.Commentaire || '',
-          avancement: record.fields.Avancement || 0,
-          objectif: record.fields.Objectif || '',
-          referentComiteIA: record.fields.ReferentComiteIA || '',
-          referentConformite: record.fields.ReferentConformite || '',
-          meneur: record.fields.Meneur || '',
-        }));
+        const items = records.map(record => {
+          // Parser les documents (liens externes stockés en JSON)
+          let documents = [];
+          try {
+            documents = record.fields.Documents ? JSON.parse(record.fields.Documents) : [];
+          } catch { documents = []; }
+          
+          // Récupérer les fichiers attachés Airtable
+          const fichiers = (record.fields.Fichiers || []).map(f => ({
+            id: f.id,
+            name: f.filename,
+            url: f.url,
+            size: f.size,
+            type: f.type,
+            isFile: true
+          }));
+          
+          return {
+            id: record.id,
+            name: record.fields.Name || '',
+            chantierId: record.fields.ChantierId || '',
+            weekStart: record.fields.WeekStart || 1,
+            weekEnd: record.fields.WeekEnd || record.fields.WeekStart || 1,
+            collaborateurs: parseCollaborateurs(record.fields.CollaborateursParRole),
+            status: record.fields.Status || 'todo',
+            commentaire: record.fields.Commentaire || '',
+            avancement: record.fields.Avancement || 0,
+            objectif: record.fields.Objectif || '',
+            referentComiteIA: record.fields.ReferentComiteIA || '',
+            referentConformite: record.fields.ReferentConformite || '',
+            meneur: record.fields.Meneur || '',
+            documents: [...documents, ...fichiers],
+          };
+        });
 
         return res.status(200).json({ items });
       }
@@ -245,6 +264,94 @@ export default async function handler(req, res) {
         });
 
         return res.status(200).json({ success: true });
+      }
+    }
+
+    // ========== DOCUMENTS (liens pour un projet) ==========
+    if (tableType === 'documents') {
+      // Ajouter un lien document à un projet
+      if (req.method === 'POST') {
+        const { projetId, name, url, type } = req.body;
+        if (!projetId || !name || !url) {
+          return res.status(400).json({ error: 'projetId, name et url requis' });
+        }
+
+        // Récupérer le projet actuel
+        const getResponse = await fetch(`${getAirtableUrl(TABLES.items)}/${projetId}`, { headers });
+        const getProjet = await getResponse.json();
+        if (getProjet.error) throw new Error(getProjet.error.message);
+
+        // Parser les documents existants
+        let documents = [];
+        try {
+          documents = getProjet.fields.Documents ? JSON.parse(getProjet.fields.Documents) : [];
+        } catch { documents = []; }
+
+        // Ajouter le nouveau document
+        const newDoc = {
+          id: `doc_${Date.now()}`,
+          name,
+          url,
+          type: type || 'link',
+          addedAt: new Date().toISOString(),
+          isFile: false
+        };
+        documents.push(newDoc);
+
+        // Mettre à jour le projet
+        const updateResponse = await fetch(getAirtableUrl(TABLES.items), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            records: [{
+              id: projetId,
+              fields: { Documents: JSON.stringify(documents) }
+            }]
+          }),
+        });
+
+        const updateData = await updateResponse.json();
+        if (updateData.error) throw new Error(updateData.error.message);
+
+        return res.status(201).json({ document: newDoc, documents });
+      }
+
+      // Supprimer un lien document
+      if (req.method === 'DELETE') {
+        const { projetId, documentId } = req.body;
+        if (!projetId || !documentId) {
+          return res.status(400).json({ error: 'projetId et documentId requis' });
+        }
+
+        // Récupérer le projet actuel
+        const getResponse = await fetch(`${getAirtableUrl(TABLES.items)}/${projetId}`, { headers });
+        const getProjet = await getResponse.json();
+        if (getProjet.error) throw new Error(getProjet.error.message);
+
+        // Parser et filtrer les documents
+        let documents = [];
+        try {
+          documents = getProjet.fields.Documents ? JSON.parse(getProjet.fields.Documents) : [];
+        } catch { documents = []; }
+
+        documents = documents.filter(d => d.id !== documentId);
+
+        // Mettre à jour le projet
+        const updateResponse = await fetch(getAirtableUrl(TABLES.items), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            records: [{
+              id: projetId,
+              fields: { Documents: JSON.stringify(documents) }
+            }]
+          }),
+        });
+
+        const updateData = await updateResponse.json();
+        if (updateData.error) throw new Error(updateData.error.message);
+
+        return res.status(200).json({ success: true, documents });
       }
     }
 
