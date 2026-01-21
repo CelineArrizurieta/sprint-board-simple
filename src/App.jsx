@@ -75,6 +75,11 @@ export default function App() {
   // Drag and Drop state
   const [draggedTache, setDraggedTache] = useState(null);
   const [dragOverSprint, setDragOverSprint] = useState(null);
+  
+  // Documents state
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [newDocument, setNewDocument] = useState({ name: '', url: '', type: 'onedrive' });
+  const [savingDocument, setSavingDocument] = useState(false);
 
   const handleLogin = () => {
     if (passwordInput === 'ApiYou2026') {
@@ -236,6 +241,75 @@ export default function App() {
   const toggleTacheStatus = async (tache) => {
     const newStatus = tache.status === 'done' ? 'todo' : 'done';
     await saveTache({ ...tache, status: newStatus });
+  };
+
+  // Document handlers
+  const addDocument = async (projetId, docData) => {
+    setSavingDocument(true);
+    try {
+      const response = await fetch(`${API_URL}?table=documents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projetId, ...docData }),
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      
+      // Mettre à jour le projet local avec les nouveaux documents
+      setProjets(prev => prev.map(p => 
+        p.id === projetId ? { ...p, documents: data.documents } : p
+      ));
+      if (selectedProjet?.id === projetId) {
+        setSelectedProjet(prev => ({ ...prev, documents: data.documents }));
+      }
+      setShowDocumentModal(false);
+      setNewDocument({ name: '', url: '', type: 'onedrive' });
+    } catch (err) {
+      setError(`Erreur: ${err.message}`);
+    } finally {
+      setSavingDocument(false);
+    }
+  };
+
+  const deleteDocument = async (projetId, documentId) => {
+    if (!confirm('Supprimer ce document ?')) return;
+    try {
+      const response = await fetch(`${API_URL}?table=documents`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projetId, documentId }),
+      });
+      const data = await response.json();
+      if (data.error) throw new Error(data.error);
+      
+      // Mettre à jour le projet local
+      setProjets(prev => prev.map(p => 
+        p.id === projetId ? { ...p, documents: data.documents } : p
+      ));
+      if (selectedProjet?.id === projetId) {
+        setSelectedProjet(prev => ({ ...prev, documents: data.documents }));
+      }
+    } catch (err) {
+      setError(`Erreur: ${err.message}`);
+    }
+  };
+
+  const getDocumentIcon = (type, url) => {
+    if (type === 'onedrive' || url?.includes('onedrive') || url?.includes('sharepoint')) return '📘';
+    if (type === 'gdrive' || url?.includes('drive.google')) return '📗';
+    if (type === 'notion' || url?.includes('notion')) return '📓';
+    if (url?.includes('.pdf')) return '📕';
+    if (url?.includes('.doc') || url?.includes('.docx')) return '📄';
+    if (url?.includes('.xls') || url?.includes('.xlsx')) return '📊';
+    if (url?.includes('.ppt') || url?.includes('.pptx')) return '📽️';
+    return '🔗';
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   // Drag and Drop handlers
@@ -437,6 +511,40 @@ export default function App() {
                   <div className="flex justify-between"><span className="text-gray-600">Heures réelles</span><span className="font-medium">{globalStats.heuresReelles}h</span></div>
                 </div>
               </div>
+              
+              {/* Section Documents */}
+              <div className="bg-white rounded-lg shadow p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-800">📁 Documents</h3>
+                  <button onClick={() => setShowDocumentModal(true)}
+                    className="text-xs px-2 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200">
+                    + Ajouter
+                  </button>
+                </div>
+                {(!selectedProjet.documents || selectedProjet.documents.length === 0) ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Aucun document</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {selectedProjet.documents.map(doc => (
+                      <div key={doc.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg group hover:bg-gray-100">
+                        <span className="text-lg">{getDocumentIcon(doc.type, doc.url)}</span>
+                        <div className="flex-1 min-w-0">
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer" 
+                            className="text-sm font-medium text-blue-600 hover:underline truncate block">
+                            {doc.name}
+                          </a>
+                          {doc.size && <span className="text-xs text-gray-400">{formatFileSize(doc.size)}</span>}
+                        </div>
+                        <button onClick={() => deleteDocument(selectedProjet.id, doc.id)}
+                          className="p-1 text-red-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                          🗑️
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
               <div className="bg-white rounded-lg shadow p-4">
                 <button onClick={() => { setEditingProjet(selectedProjet); setShowProjetModal(true); }}
                   className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">✏️ Modifier le projet</button>
@@ -794,6 +902,59 @@ export default function App() {
                   saveTache(data);
                 }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
                   {isSaving ? '⏳' : (editingTache ? 'Modifier' : 'Créer')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Ajouter Document */}
+        {showDocumentModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+              <h3 className="text-xl font-bold p-6 pb-4 border-b">📁 Ajouter un document</h3>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom du document *</label>
+                  <input type="text" value={newDocument.name}
+                    onChange={(e) => setNewDocument({ ...newDocument, name: e.target.value })}
+                    placeholder="Ex: Cahier des charges v2"
+                    className="w-full p-3 border rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Lien vers le document *</label>
+                  <input type="url" value={newDocument.url}
+                    onChange={(e) => setNewDocument({ ...newDocument, url: e.target.value })}
+                    placeholder="https://..."
+                    className="w-full p-3 border rounded-lg" />
+                  <p className="text-xs text-gray-500 mt-1">OneDrive, Google Drive, Notion, ou tout autre lien</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Type de document</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      { id: 'onedrive', label: '📘 OneDrive', color: 'blue' },
+                      { id: 'gdrive', label: '📗 Google Drive', color: 'green' },
+                      { id: 'notion', label: '📓 Notion', color: 'gray' },
+                      { id: 'other', label: '🔗 Autre', color: 'purple' },
+                    ].map(t => (
+                      <button key={t.id} type="button"
+                        onClick={() => setNewDocument({ ...newDocument, type: t.id })}
+                        className={`px-3 py-2 rounded-lg border-2 text-sm ${newDocument.type === t.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3 p-6 pt-4 border-t">
+                <button onClick={() => { setShowDocumentModal(false); setNewDocument({ name: '', url: '', type: 'onedrive' }); }} 
+                  className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
+                <button onClick={() => {
+                  if (!newDocument.name || !newDocument.url) { alert('Nom et lien requis'); return; }
+                  addDocument(selectedProjet.id, newDocument);
+                }} disabled={savingDocument} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                  {savingDocument ? '⏳' : 'Ajouter'}
                 </button>
               </div>
             </div>
