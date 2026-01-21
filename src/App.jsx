@@ -1634,6 +1634,8 @@ export default function App() {
                     currentCollabs.forEach(collabId => {
                       const collab = collaborateurs.find(c => c.id === collabId);
                       if (!collab) return;
+                      // Si le collaborateur EST directeur, pas besoin de lui trouver un directeur
+                      if (collab.estDirecteur) return;
                       // 1) Directeur via Linked Record (maintenant c'est l'id collab_X)
                       if (collab.directeurId) {
                         directeursIds.add(collab.directeurId);
