@@ -619,6 +619,15 @@ export default async function handler(req, res) {
             photoUrl = photoField[0].thumbnails?.large?.url || photoField[0].url || null;
           }
           
+          // Gérer le directeur (Linked Record)
+          let directeurId = null;
+          const directeurField = record.fields.Directeur;
+          if (directeurField && Array.isArray(directeurField) && directeurField.length > 0) {
+            directeurId = directeurField[0];
+          } else if (typeof directeurField === 'string') {
+            directeurId = directeurField;
+          }
+          
           return {
             id: record.fields.Id || record.id,
             recordId: record.id, // Le vrai recordId Airtable pour les Linked Records
@@ -626,6 +635,7 @@ export default async function handler(req, res) {
             nomComplet: record.fields.NomComplet || record.fields.Name || '',
             role: record.fields.Role || '',
             service: record.fields.Service || '',
+            pole: record.fields.Pole || record.fields.Service || '',
             color: record.fields.Color || '#7B1FA2',
             email: record.fields.Email || '',
             photo: photoUrl,
@@ -633,6 +643,7 @@ export default async function handler(req, res) {
             estComiteStrategiqueIA: toBool(record.fields.EstComiteStrategiqueIA),
             estCommissionConformite: toBool(record.fields.EstCommissionConformite),
             peutEtreMeneur: record.fields.PeutEtreMeneur === false ? false : true,
+            directeurId: directeurId,
             order: record.fields.Order || 0,
           };
         });
