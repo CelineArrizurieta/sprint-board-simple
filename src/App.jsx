@@ -1610,40 +1610,12 @@ export default function App() {
                     <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 border rounded-lg">
                       {collaborateurs.map(collab => {
                         const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
-                        // Trouver le directeur : 1) champ Directeur (Linked Record), 2) sinon directeur du Service
-                        let directeur = null;
-                        if (collab.directeurId) {
-                          // Debug: afficher les valeurs pour comprendre
-                          if (collab.name === 'Maeva') {
-                            console.log('Maeva directeurId:', collab.directeurId);
-                            console.log('Séverine id:', collaborateurs.find(c => c.name === 'Séverine')?.id);
-                            console.log('Séverine recordId:', collaborateurs.find(c => c.name === 'Séverine')?.recordId);
-                          }
-                          // Priorité au champ Directeur (Linked Record) - comparer avec id ET recordId
-                          directeur = collaborateurs.find(c => 
-                            c.id === collab.directeurId || 
-                            c.recordId === collab.directeurId
-                          );
-                        }
-                        if (!directeur && collab.service) {
-                          // Sinon, chercher le directeur du même Service
-                          directeur = collaborateurs.find(c => c.estDirecteur && c.service === collab.service && c.id !== collab.id);
-                        }
                         return (
                           <button key={collab.id} type="button"
                             onClick={() => {
                               const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                              let updated;
-                              if (isSelected) {
-                                // Désélection simple
-                                updated = current.filter(id => id !== collab.id);
-                              } else {
-                                // Sélection : ajouter le collaborateur ET son directeur automatiquement
-                                updated = [...current, collab.id];
-                                if (directeur && !current.includes(directeur.id)) {
-                                  updated.push(directeur.id);
-                                }
-                              }
+                              // Sélection/désélection simple - PAS d'ajout automatique du directeur dans l'équipe
+                              const updated = isSelected ? current.filter(id => id !== collab.id) : [...current, collab.id];
                               editingProjet ? setEditingProjet({ ...editingProjet, collaborateurs: updated }) : setNewProjet({ ...newProjet, collaborateurs: updated });
                             }}
                             className={`px-2 py-1 rounded text-xs ${isSelected ? 'text-white' : 'bg-gray-100 text-gray-700'}`}
@@ -1662,15 +1634,11 @@ export default function App() {
                     currentCollabs.forEach(collabId => {
                       const collab = collaborateurs.find(c => c.id === collabId);
                       if (!collab) return;
-                      // 1) Directeur via Linked Record
+                      // 1) Directeur via Linked Record (maintenant c'est l'id collab_X)
                       if (collab.directeurId) {
-                        const dir = collaborateurs.find(c => 
-                          c.id === collab.directeurId || 
-                          c.recordId === collab.directeurId
-                        );
-                        if (dir) directeursIds.add(dir.id);
+                        directeursIds.add(collab.directeurId);
                       } 
-                      // 2) Sinon directeur du Service
+                      // 2) Sinon directeur du Service (EstDirecteur + même Service)
                       else if (collab.service) {
                         const dir = collaborateurs.find(c => c.estDirecteur && c.service === collab.service && c.id !== collab.id);
                         if (dir) directeursIds.add(dir.id);
