@@ -611,6 +611,12 @@ export default async function handler(req, res) {
       if (req.method === 'GET') {
         const records = await fetchAllRecords(TABLES.collaborateurs, headers);
         
+        // Créer un mapping recordId -> Id pour résoudre les Linked Records
+        const recordIdToId = {};
+        records.forEach(record => {
+          recordIdToId[record.id] = record.fields.Id || record.id;
+        });
+        
         const collaborateurs = records.map(record => {
           // Gérer la photo (pièce jointe Airtable)
           const photoField = record.fields.Photo;
@@ -619,13 +625,15 @@ export default async function handler(req, res) {
             photoUrl = photoField[0].thumbnails?.large?.url || photoField[0].url || null;
           }
           
-          // Gérer le directeur (Linked Record)
+          // Gérer le directeur (Linked Record) - convertir recordId en Id
           let directeurId = null;
           const directeurField = record.fields.Directeur;
           if (directeurField && Array.isArray(directeurField) && directeurField.length > 0) {
-            directeurId = directeurField[0];
+            // C'est un recordId Airtable, on le convertit en Id (collab_X)
+            const dirRecordId = directeurField[0];
+            directeurId = recordIdToId[dirRecordId] || dirRecordId;
           } else if (typeof directeurField === 'string') {
-            directeurId = directeurField;
+            directeurId = recordIdToId[directeurField] || directeurField;
           }
           
           return {
