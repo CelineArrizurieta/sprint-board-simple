@@ -472,6 +472,7 @@ export default async function handler(req, res) {
           
           return {
             id: record.fields.Id || record.id,
+            recordId: record.id, // Le vrai recordId Airtable pour les Linked Records
             name: record.fields.Name || '',
             nomComplet: record.fields.NomComplet || record.fields.Name || '',
             role: record.fields.Role || '',
