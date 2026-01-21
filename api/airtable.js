@@ -54,6 +54,19 @@ const STATUS_FROM_AIRTABLE = {
 const toAirtableStatus = (status) => STATUS_TO_AIRTABLE[status] || status || 'À faire';
 const fromAirtableStatus = (status) => STATUS_FROM_AIRTABLE[status] || status || 'todo';
 
+// Helper pour extraire un ID string depuis un Linked Record (peut être string ou tableau)
+const extractId = (val) => {
+  if (!val) return '';
+  if (Array.isArray(val)) return val[0] || '';
+  return val;
+};
+
+// Helper pour vérifier si une valeur est un recordId Airtable
+const isRecordId = (val) => {
+  const id = extractId(val);
+  return typeof id === 'string' && id.startsWith('rec');
+};
+
 // Helper pour parser les collaborateurs
 const parseCollaborateurs = (val) => {
   if (!val) return [];
@@ -285,6 +298,10 @@ export default async function handler(req, res) {
           return res.status(400).json({ error: 'Le nom de la tâche est requis' });
         }
         
+        // Extraire les IDs (peuvent être tableaux ou strings)
+        const projetIdStr = extractId(projetId);
+        const assigneStr = extractId(assigne);
+        
         // Construire les champs - Projet peut être un Linked Record ou un texte
         const fields = {
           'Nom de la tâche': name,
@@ -295,21 +312,20 @@ export default async function handler(req, res) {
         };
         
         // Projet - essayer comme Linked Record (tableau) si c'est un recordId Airtable
-        if (projetId) {
-          // Si c'est un recordId Airtable (commence par "rec"), envoyer comme tableau
-          if (projetId.startsWith('rec')) {
-            fields['Projet'] = [projetId];
+        if (projetIdStr) {
+          if (isRecordId(projetIdStr)) {
+            fields['Projet'] = [projetIdStr];
           } else {
-            fields['Projet'] = projetId;
+            fields['Projet'] = projetIdStr;
           }
         }
         
         // Assigné - pareil, peut être un Linked Record
-        if (assigne) {
-          if (assigne.startsWith('rec')) {
-            fields['Assigné'] = [assigne];
+        if (assigneStr) {
+          if (isRecordId(assigneStr)) {
+            fields['Assigné'] = [assigneStr];
           } else {
-            fields['Assigné'] = assigne;
+            fields['Assigné'] = assigneStr;
           }
         }
         
@@ -347,9 +363,9 @@ export default async function handler(req, res) {
           tache: {
             id: record.id,
             name: record.fields['Nom de la tâche'] || '',
-            projetId: record.fields.Projet || '',
+            projetId: extractId(record.fields.Projet),
             sprint: record.fields['Sprint/Phase'] || 'Backlog',
-            assigne: record.fields['Assigné'] || '',
+            assigne: extractId(record.fields['Assigné']),
             dureeEstimee: record.fields['Durée estimée'] || 0,
             heuresReelles: record.fields['Heures réelles'] || 0,
             status: fromAirtableStatus(record.fields.Statut),
@@ -363,6 +379,13 @@ export default async function handler(req, res) {
         const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
+        // Extraire les IDs (peuvent être tableaux ou strings)
+        const projetIdStr = extractId(projetId);
+        const assigneStr = extractId(assigne);
+        
+        console.log('PUT/PATCH tache - projetId:', projetId, '-> extracted:', projetIdStr);
+        console.log('PUT/PATCH tache - assigne:', assigne, '-> extracted:', assigneStr);
+
         // Construire les champs
         const fields = {
           'Nom de la tâche': name,
@@ -373,28 +396,31 @@ export default async function handler(req, res) {
         };
         
         // Projet - essayer comme Linked Record (tableau) si c'est un recordId Airtable
-        if (projetId) {
-          if (projetId.startsWith('rec')) {
-            fields['Projet'] = [projetId];
+        if (projetIdStr) {
+          if (isRecordId(projetIdStr)) {
+            fields['Projet'] = [projetIdStr];
           } else {
-            fields['Projet'] = projetId;
+            fields['Projet'] = projetIdStr;
           }
         }
         
         // Assigné - pareil, peut être un Linked Record
-        if (assigne) {
-          if (assigne.startsWith('rec')) {
-            fields['Assigné'] = [assigne];
+        if (assigneStr) {
+          if (isRecordId(assigneStr)) {
+            fields['Assigné'] = [assigneStr];
           } else {
-            fields['Assigné'] = assigne;
+            fields['Assigné'] = assigneStr;
           }
         } else {
-          fields['Assigné'] = ''; // Permettre de désassigner
+          // Ne pas envoyer de champ vide pour éviter les erreurs Airtable avec Linked Records
+          // fields['Assigné'] = ''; // Commenté - on ne touche pas à l'assigné si non fourni
         }
         
         // Durées
         fields['Durée estimée'] = dureeEstimee || 0;
         fields['Heures réelles'] = heuresReelles || 0;
+        
+        console.log('PATCH tache with fields:', JSON.stringify(fields));
 
         const response = await fetch(getAirtableUrl(TABLES.taches), {
           method: 'PATCH',
@@ -412,9 +438,9 @@ export default async function handler(req, res) {
           tache: {
             id: record.id,
             name: record.fields['Nom de la tâche'] || '',
-            projetId: record.fields.Projet || '',
+            projetId: extractId(record.fields.Projet),
             sprint: record.fields['Sprint/Phase'] || 'Backlog',
-            assigne: record.fields['Assigné'] || '',
+            assigne: extractId(record.fields['Assigné']),
             dureeEstimee: record.fields['Durée estimée'] || 0,
             heuresReelles: record.fields['Heures réelles'] || 0,
             status: fromAirtableStatus(record.fields.Statut),
