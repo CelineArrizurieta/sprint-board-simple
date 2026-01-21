@@ -42,7 +42,8 @@ const SPRINTS = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Backlog'];
 // Pôles pour la vue Équipage (sans icônes)
 const POLES = {
   'Présidence': { color: '#7C3AED', bgLight: '#F3E8FF' },
-  'Direction Générale': { color: '#7C3AED', bgLight: '#F3E8FF' }, // Alias vers Présidence
+  'Direction': { color: '#7C3AED', bgLight: '#F3E8FF' }, // Alias vers Présidence
+  'Direction Générale': { color: '#8B5CF6', bgLight: '#EDE9FE' },
   'Conseil': { color: '#6366F1', bgLight: '#E0E7FF' },
   'Informatique': { color: '#3B82F6', bgLight: '#DBEAFE' },
   'Datacenter': { color: '#0EA5E9', bgLight: '#E0F2FE' },
@@ -59,11 +60,11 @@ const POLES = {
 
 // Mapping pour renommer certains pôles à l'affichage
 const POLES_DISPLAY_NAME = {
-  'Direction Générale': 'Présidence',
+  'Direction': 'Présidence', // "Direction" dans Airtable → affiche "Présidence"
 };
 
 const POLES_ORDER = [
-  'Présidence', 'Direction Générale', 'Conseil', 'Production & Innovation', 'Innovation',
+  'Présidence', 'Direction', 'Direction Générale', 'Conseil', 'Production & Innovation', 'Innovation',
   'Informatique', 'Datacenter', 'Production', 'Animation', 
   'Développement Commercial', 'Développement et Marketing', 'Communication', 'Admin & RH', 'Autre'
 ];
