@@ -1610,11 +1610,23 @@ export default function App() {
                     <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 border rounded-lg">
                       {collaborateurs.map(collab => {
                         const isSelected = (editingProjet?.collaborateurs || newProjet.collaborateurs || []).includes(collab.id);
+                        // Trouver le directeur de ce collaborateur par son Service (EstDirecteur + même Service)
+                        const directeur = collab.service ? collaborateurs.find(c => c.estDirecteur && c.service === collab.service && c.id !== collab.id) : null;
                         return (
                           <button key={collab.id} type="button"
                             onClick={() => {
                               const current = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
-                              const updated = isSelected ? current.filter(id => id !== collab.id) : [...current, collab.id];
+                              let updated;
+                              if (isSelected) {
+                                // Désélection simple
+                                updated = current.filter(id => id !== collab.id);
+                              } else {
+                                // Sélection : ajouter le collaborateur ET son directeur automatiquement
+                                updated = [...current, collab.id];
+                                if (directeur && !current.includes(directeur.id)) {
+                                  updated.push(directeur.id);
+                                }
+                              }
                               editingProjet ? setEditingProjet({ ...editingProjet, collaborateurs: updated }) : setNewProjet({ ...newProjet, collaborateurs: updated });
                             }}
                             className={`px-2 py-1 rounded text-xs ${isSelected ? 'text-white' : 'bg-gray-100 text-gray-700'}`}
@@ -1625,6 +1637,39 @@ export default function App() {
                       })}
                     </div>
                   </div>
+                  {/* Directeurs concernés - calculé automatiquement par Service */}
+                  {(() => {
+                    const currentCollabs = editingProjet?.collaborateurs || newProjet.collaborateurs || [];
+                    // Trouver tous les services des collaborateurs sélectionnés
+                    const servicesUtilises = [...new Set(currentCollabs.map(collabId => {
+                      const collab = collaborateurs.find(c => c.id === collabId);
+                      return collab?.service;
+                    }).filter(Boolean))];
+                    // Trouver les directeurs de ces services
+                    const directeursConcernes = collaborateurs.filter(c => 
+                      c.estDirecteur && servicesUtilises.includes(c.service)
+                    );
+                    if (directeursConcernes.length === 0) return null;
+                    return (
+                      <div className="mt-3 p-2 bg-purple-50 rounded-lg border border-purple-200">
+                        <label className="block text-xs text-purple-600 font-medium mb-2">📋 Directeurs concernés (auto)</label>
+                        <div className="flex flex-wrap gap-2">
+                          {directeursConcernes.map(dir => (
+                            <div key={dir.id} className="flex items-center gap-1 px-2 py-1 bg-white rounded border border-purple-300">
+                              {dir.photo ? (
+                                <img src={dir.photo} alt="" className="w-5 h-5 rounded-full object-cover" />
+                              ) : (
+                                <div className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: dir.color }}>
+                                  {dir.name.charAt(0)}
+                                </div>
+                              )}
+                              <span className="text-xs font-medium text-purple-700">{dir.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
               <div>
