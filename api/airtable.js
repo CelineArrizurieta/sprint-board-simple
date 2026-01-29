@@ -205,8 +205,24 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, objectif, referentComiteIA, referentConformite, meneur } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, objectif, referentComiteIA, referentConformite, meneur, sprintsNoms } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
+
+        // Construire les champs à mettre à jour (seulement ceux fournis)
+        const fieldsToUpdate = {};
+        if (name !== undefined) fieldsToUpdate.Name = name;
+        if (chantierId !== undefined) fieldsToUpdate.ChantierId = chantierId;
+        if (weekStart !== undefined) fieldsToUpdate.WeekStart = weekStart || 1;
+        if (weekEnd !== undefined) fieldsToUpdate.WeekEnd = weekEnd || weekStart || 1;
+        if (collaborateurs !== undefined) fieldsToUpdate.CollaborateursParRole = JSON.stringify(collaborateurs || []);
+        if (status !== undefined) fieldsToUpdate.Status = status || 'todo';
+        if (commentaire !== undefined) fieldsToUpdate.Commentaire = commentaire || '';
+        if (avancement !== undefined) fieldsToUpdate.Avancement = avancement || 0;
+        if (objectif !== undefined) fieldsToUpdate.Objectif = objectif || '';
+        if (referentComiteIA !== undefined) fieldsToUpdate.ReferentComiteIA = referentComiteIA || '';
+        if (referentConformite !== undefined) fieldsToUpdate.ReferentConformite = referentConformite || '';
+        if (meneur !== undefined) fieldsToUpdate.Meneur = meneur || '';
+        if (sprintsNoms !== undefined) fieldsToUpdate.SprintsNoms = sprintsNoms || '';
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'PATCH',
@@ -214,20 +230,7 @@ export default async function handler(req, res) {
           body: JSON.stringify({
             records: [{
               id,
-              fields: {
-                Name: name,
-                ChantierId: chantierId,
-                WeekStart: weekStart || 1,
-                WeekEnd: weekEnd || weekStart || 1,
-                CollaborateursParRole: JSON.stringify(collaborateurs || []),
-                Status: status || 'todo',
-                Commentaire: commentaire || '',
-                Avancement: avancement || 0,
-                Objectif: objectif || '',
-                ReferentComiteIA: referentComiteIA || '',
-                ReferentConformite: referentConformite || '',
-                Meneur: meneur || '',
-              }
+              fields: fieldsToUpdate
             }]
           }),
         });
@@ -251,6 +254,7 @@ export default async function handler(req, res) {
             referentComiteIA: record.fields.ReferentComiteIA || '',
             referentConformite: record.fields.ReferentConformite || '',
             meneur: record.fields.Meneur || '',
+            sprintsNoms: record.fields.SprintsNoms || '',
           }
         });
       }
