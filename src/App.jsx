@@ -736,20 +736,15 @@ export default function App() {
       // Envoyer le webhook à Make
       const webhookUrl = 'https://hook.eu2.make.com/0fbx8h5rp2tmxtl7aisxtujgfwc5we8e';
       
-      try {
-        await fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          mode: 'no-cors',
-          body: JSON.stringify({
-            projet: selectedProjet.name,
-            datePresentation: datePresentation,
-            equipe: equipeNoms,
-          }),
-        });
-      } catch (webhookErr) {
-        console.log('Webhook envoyé (mode no-cors)');
-      }
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projet: selectedProjet.name,
+          datePresentation: datePresentation,
+          equipe: equipeNoms,
+        }),
+      }).catch(() => {});
       
       alert('✅ Notification envoyée au Comité IA !');
     } catch (err) {
