@@ -147,6 +147,7 @@ export default async function handler(req, res) {
             referentComiteIA: record.fields.ReferentComiteIA || '',
             referentConformite: record.fields.ReferentConformite || '',
             meneur: record.fields.Meneur || '',
+            sprintsNoms: record.fields.SprintsNoms || '',
             documents: [...documents, ...fichiers],
           };
         });
