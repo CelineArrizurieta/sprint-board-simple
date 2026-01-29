@@ -315,73 +315,7 @@ export default function App() {
     }
   };
 
-  // Générer fichier ICS pour téléchargement simple
-  const generateICS = (tache, collab) => {
-    const projet = projets.find(p => p.id === tache.projetId);
-    
-    // Parser les dates correctement
-    const parseDate = (dateStr) => {
-      if (!dateStr) return new Date();
-      const parts = dateStr.split('-');
-      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    };
-    
-    const dateDebut = parseDate(tache.dateDebut);
-    const dateFin = tache.dateFin ? parseDate(tache.dateFin) : dateDebut;
-    
-    // Formater les dates en format ICS (YYYYMMDD)
-    const formatDateICS = (date) => {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}${m}${d}`;
-    };
-    
-    // Ajouter 1 jour à la date de fin pour les événements "toute la journée"
-    const dateFinPlusUn = new Date(dateFin);
-    dateFinPlusUn.setDate(dateFinPlusUn.getDate() + 1);
-    
-    // Récupérer l'email du collaborateur
-    const collabInfo = collab || collaborateurs.find(c => c.id === tache.assigne || c.recordId === tache.assigne);
-    const attendeeEmail = collabInfo?.email || '';
-    
-    let icsContent = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//API & YOU//Sprint Board COMEX 2026//FR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:${tache.id}@sprintboard.apiyou.fr
-DTSTAMP:${formatDateICS(new Date())}T000000Z
-DTSTART;VALUE=DATE:${formatDateICS(dateDebut)}
-DTEND;VALUE=DATE:${formatDateICS(dateFinPlusUn)}
-SUMMARY:[${projet?.name || 'Projet'}] ${tache.name}
-DESCRIPTION:Projet: ${projet?.name || 'Non défini'}\\nTâche: ${tache.name}\\nDurée estimée: ${tache.dureeEstimee}h\\n${tache.commentaire || ''}
-CATEGORIES:Sprint Board,COMEX 2026
-STATUS:CONFIRMED
-ORGANIZER;CN=Sprint Board:mailto:noreply@apiyou.fr`;
-
-    if (attendeeEmail) {
-      icsContent += `
-ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${collabInfo?.name || ''}:mailto:${attendeeEmail}`;
-    }
-
-    icsContent += `
-END:VEVENT
-END:VCALENDAR`;
-    
-    // Créer et télécharger le fichier
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `invitation_${tache.name.replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  // Envoyer invitation Outlook (ouvre Outlook Web ou l'app Outlook)
+  // Envoyer invitation Outlook - Génère un fichier .ics qui ouvre Outlook directement
   const envoyerInvitationOutlook = (tache, collab) => {
     const projet = projets.find(p => p.id === tache.projetId);
     
@@ -398,48 +332,79 @@ END:VCALENDAR`;
     // Récupérer l'email du collaborateur
     const collabInfo = collab || collaborateurs.find(c => c.id === tache.assigne || c.recordId === tache.assigne);
     const attendeeEmail = collabInfo?.email || '';
+    const attendeeName = collabInfo?.name || '';
     
     if (!attendeeEmail) {
-      alert(`Impossible d'envoyer l'invitation : ${collabInfo?.name || 'Ce collaborateur'} n'a pas d'email enregistré.`);
+      alert(`⚠️ Impossible d'envoyer l'invitation :\n\n${attendeeName || 'Ce collaborateur'} n'a pas d'email enregistré dans Airtable.\n\nVeuillez d'abord ajouter son email dans la fiche collaborateur.`);
       return;
     }
     
-    // Formater les dates pour Outlook Web (format ISO)
-    const formatDateOutlook = (date) => {
+    // Formater les dates en format ICS (YYYYMMDD)
+    const formatDateICS = (date) => {
       const y = date.getFullYear();
       const m = String(date.getMonth() + 1).padStart(2, '0');
       const d = String(date.getDate()).padStart(2, '0');
-      return `${y}-${m}-${d}`;
+      return `${y}${m}${d}`;
     };
     
-    // Ajouter 1 jour à la date de fin (Outlook utilise date exclusive pour allday)
+    // Formater date lisible pour la description
+    const formatDateFR = (date) => {
+      return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    };
+    
+    // Ajouter 1 jour à la date de fin pour les événements "toute la journée" (ICS utilise date exclusive)
     const dateFinPlusUn = new Date(dateFin);
     dateFinPlusUn.setDate(dateFinPlusUn.getDate() + 1);
     
-    const subject = encodeURIComponent(`[${projet?.name || 'Projet'}] ${tache.name}`);
-    const body = encodeURIComponent(`Bonjour ${collabInfo?.name || ''},
-
-Vous êtes invité(e) à travailler sur la tâche suivante :
-
-📋 Projet : ${projet?.name || 'Non défini'}
-✅ Tâche : ${tache.name}
-⏱️ Durée estimée : ${tache.dureeEstimee}h
-📅 Période : du ${dateDebut.toLocaleDateString('fr-FR')} au ${dateFin.toLocaleDateString('fr-FR')}
-
-${tache.commentaire ? `📝 Commentaire : ${tache.commentaire}` : ''}
-
----
-Invitation envoyée depuis Sprint Board COMEX 2026`);
-
-    const startDate = formatDateOutlook(dateDebut);
-    const endDate = formatDateOutlook(dateFinPlusUn);
+    // Timestamp actuel pour DTSTAMP
+    const now = new Date();
+    const dtstamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}Z`;
     
-    // URL Outlook Web pour créer un événement avec invitation
-    // Format: https://outlook.office.com/calendar/0/deeplink/compose?subject=...&startdt=...&enddt=...&to=...&body=...&allday=true
-    const outlookWebUrl = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${subject}&startdt=${startDate}&enddt=${endDate}&to=${encodeURIComponent(attendeeEmail)}&body=${body}&allday=true`;
+    // Description avec retours à la ligne ICS (\\n)
+    const description = `Bonjour ${attendeeName},\\n\\nVous êtes invité(e) à travailler sur cette tâche :\\n\\n` +
+      `📋 PROJET : ${projet?.name || 'Non défini'}\\n` +
+      `✅ TÂCHE : ${tache.name}\\n` +
+      `⏱️ DURÉE ESTIMÉE : ${tache.dureeEstimee}h\\n` +
+      `📅 PÉRIODE : Du ${formatDateFR(dateDebut)} au ${formatDateFR(dateFin)}\\n` +
+      (tache.commentaire ? `\\n📝 COMMENTAIRE :\\n${tache.commentaire}\\n` : '') +
+      `\\n---\\nInvitation envoyée depuis Sprint Board COMEX 2026`;
     
-    // Ouvrir dans un nouvel onglet
-    window.open(outlookWebUrl, '_blank');
+    // Générer le fichier ICS avec METHOD:REQUEST pour que ce soit une invitation
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//API & YOU//Sprint Board COMEX 2026//FR
+METHOD:REQUEST
+BEGIN:VEVENT
+UID:${tache.id}-${Date.now()}@sprintboard.apiyou.fr
+SEQUENCE:0
+DTSTAMP:${dtstamp}
+DTSTART;VALUE=DATE:${formatDateICS(dateDebut)}
+DTEND;VALUE=DATE:${formatDateICS(dateFinPlusUn)}
+SUMMARY:[${projet?.name || 'Projet'}] ${tache.name}
+DESCRIPTION:${description}
+LOCATION:API & YOU
+CATEGORIES:Sprint Board,COMEX 2026
+PRIORITY:5
+STATUS:CONFIRMED
+TRANSP:OPAQUE
+ORGANIZER;CN=Sprint Board COMEX 2026:mailto:planning@apiyou.fr
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${attendeeName}:mailto:${attendeeEmail}
+END:VEVENT
+END:VCALENDAR`;
+    
+    // Créer et télécharger le fichier - Outlook l'ouvrira automatiquement
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Invitation_${attendeeName.replace(/[^a-zA-Z0-9]/g, '_')}_${tache.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30)}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    // Notification de succès
+    alert(`✅ Fichier d'invitation téléchargé !\n\n1. Ouvrez le fichier .ics téléchargé\n2. Outlook s'ouvre avec la réunion pré-remplie\n3. Cliquez sur "Envoyer" pour inviter ${attendeeName}`);
   };
 
   // Document handlers
