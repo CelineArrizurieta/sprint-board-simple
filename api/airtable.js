@@ -380,12 +380,26 @@ export default async function handler(req, res) {
             assigne = assigne[0];
           }
           
+          // Extraire le capitaine (peut être un tableau de Linked Records)
+          let capitaine = record.fields['Capitaine'] || '';
+          if (Array.isArray(capitaine)) {
+            capitaine = capitaine[0];
+          }
+          
+          // Extraire l'équipe (tableau de Linked Records)
+          let equipe = record.fields['Equipe'] || [];
+          if (!Array.isArray(equipe)) {
+            equipe = equipe ? [equipe] : [];
+          }
+          
           return {
             id: record.id,
             name: record.fields['Nom de la tâche'] || record.fields.Name || '',
             projetId: projetId,
             sprint: record.fields['Sprint/Phase'] || record.fields.Sprint || 'Backlog',
             assigne: assigne,
+            capitaine: capitaine,
+            equipe: equipe,
             dureeEstimee: record.fields['Durée estimée'] || record.fields.DureeEstimee || 0,
             heuresReelles: record.fields['Heures réelles'] || record.fields.HeuresReelles || 0,
             status: fromAirtableStatus(record.fields.Statut || record.fields.Status),
@@ -406,7 +420,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'POST') {
-        const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
+        const { name, projetId, sprint, assigne, capitaine, equipe, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
         
         console.log('POST tache - received body:', JSON.stringify(req.body));
         
@@ -417,6 +431,7 @@ export default async function handler(req, res) {
         // Extraire les IDs (peuvent être tableaux ou strings)
         const projetIdStr = extractId(projetId);
         const assigneStr = extractId(assigne);
+        const capitaineStr = extractId(capitaine);
         
         // Construire les champs - Projet peut être un Linked Record ou un texte
         const fields = {
@@ -443,6 +458,20 @@ export default async function handler(req, res) {
           } else {
             fields['Assigné'] = assigneStr;
           }
+        }
+        
+        // Capitaine - Linked Record
+        if (capitaineStr) {
+          if (isRecordId(capitaineStr)) {
+            fields['Capitaine'] = [capitaineStr];
+          } else {
+            fields['Capitaine'] = capitaineStr;
+          }
+        }
+        
+        // Équipe - tableau de Linked Records
+        if (equipe && Array.isArray(equipe) && equipe.length > 0) {
+          fields['Equipe'] = equipe.filter(id => isRecordId(id));
         }
         
         // Durées - seulement si > 0 pour éviter les erreurs
@@ -498,15 +527,18 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
+        const { id, name, projetId, sprint, assigne, capitaine, equipe, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         // Extraire les IDs (peuvent être tableaux ou strings)
         const projetIdStr = extractId(projetId);
         const assigneStr = extractId(assigne);
+        const capitaineStr = extractId(capitaine);
         
         console.log('PUT/PATCH tache - projetId:', projetId, '-> extracted:', projetIdStr);
         console.log('PUT/PATCH tache - assigne:', assigne, '-> extracted:', assigneStr);
+        console.log('PUT/PATCH tache - capitaine:', capitaine, '-> extracted:', capitaineStr);
+        console.log('PUT/PATCH tache - equipe:', equipe);
 
         // Construire les champs
         const fields = {
@@ -536,6 +568,27 @@ export default async function handler(req, res) {
         } else {
           // Ne pas envoyer de champ vide pour éviter les erreurs Airtable avec Linked Records
           // fields['Assigné'] = ''; // Commenté - on ne touche pas à l'assigné si non fourni
+        }
+        
+        // Capitaine - Linked Record
+        if (capitaineStr) {
+          if (isRecordId(capitaineStr)) {
+            fields['Capitaine'] = [capitaineStr];
+          } else {
+            fields['Capitaine'] = capitaineStr;
+          }
+        } else if (capitaine === '' || capitaine === null) {
+          // Vider le champ capitaine
+          fields['Capitaine'] = [];
+        }
+        
+        // Équipe - tableau de Linked Records
+        if (equipe !== undefined) {
+          if (Array.isArray(equipe) && equipe.length > 0) {
+            fields['Equipe'] = equipe.filter(id => isRecordId(id));
+          } else {
+            fields['Equipe'] = [];
+          }
         }
         
         // Durées
