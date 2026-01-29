@@ -724,7 +724,7 @@ export default function App() {
     
     setIsSaving(true);
     try {
-      const dateComiteIA = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
+      const dateComiteIA = selectedProjet.dateComiteIA || new Date().toISOString().split('T')[0];
       
       // Récupérer les infos du projet
       const axe = getAxeForChantier(selectedProjet.chantierId);
@@ -736,18 +736,6 @@ export default function App() {
       const membresComiteIAEmails = collaborateurs
         .filter(c => c.estComiteStrategiqueIA && c.email)
         .map(c => ({ email: c.email, name: c.name }));
-      
-      // Sauvegarder la date dans Airtable
-      const response = await fetch(`${API_URL}?table=items`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: selectedProjet.id,
-          dateComiteIA: dateComiteIA
-        }),
-      });
-      
-      if (!response.ok) throw new Error('Erreur sauvegarde date');
       
       // Envoyer le webhook à Make
       const webhookUrl = 'https://hook.eu2.make.com/0fbx8h5rp2tmxtl7aisxtujgfwc5we8e';
@@ -777,17 +765,37 @@ export default function App() {
         console.log('Webhook envoyé (mode no-cors)');
       }
       
-      // Mettre à jour localement
-      const updatedProjet = { ...selectedProjet, dateComiteIA };
-      setSelectedProjet(updatedProjet);
-      setProjets(projets.map(p => p.id === selectedProjet.id ? updatedProjet : p));
-      
-      alert('✅ Projet soumis au Comité IA !');
+      alert('✅ Notification envoyée au Comité IA !');
     } catch (err) {
       console.error('Erreur soumission Comité IA:', err);
       alert('Erreur lors de la soumission');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // Mettre à jour la date du Comité IA
+  const updateDateComiteIA = async (date) => {
+    if (!selectedProjet) return;
+    
+    try {
+      const response = await fetch(`${API_URL}?table=items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedProjet.id,
+          dateComiteIA: date || null
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Erreur sauvegarde');
+      
+      // Mettre à jour localement
+      const updatedProjet = { ...selectedProjet, dateComiteIA: date || null };
+      setSelectedProjet(updatedProjet);
+      setProjets(projets.map(p => p.id === selectedProjet.id ? updatedProjet : p));
+    } catch (err) {
+      console.error('Erreur mise à jour date Comité IA:', err);
     }
   };
 
@@ -954,33 +962,36 @@ export default function App() {
               {/* Section Comité IA */}
               <div className="bg-white rounded-lg shadow p-4">
                 <h3 className="font-semibold text-gray-800 mb-3">📋 Comité IA</h3>
-                {selectedProjet.dateComiteIA ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-green-500">✅</span>
-                      <span className="text-gray-600">Soumis le</span>
-                      <span className="font-medium">{new Date(selectedProjet.dateComiteIA).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Date de présentation</label>
+                    <input 
+                      type="date" 
+                      value={formatDateForInput(selectedProjet.dateComiteIA) || ''}
+                      onChange={(e) => updateDateComiteIA(e.target.value)}
+                      className="w-full p-2 border rounded-lg text-sm"
+                    />
+                  </div>
+                  {selectedProjet.dateComiteIA ? (
+                    <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
+                      <span>✅</span>
+                      <span>Prévu le {new Date(selectedProjet.dateComiteIA).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
                     </div>
-                    <button 
-                      onClick={() => soumettreComiteIA()}
-                      disabled={isSaving}
-                      className="w-full px-3 py-2 text-sm border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50"
-                    >
-                      🔄 Soumettre à nouveau
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm text-gray-500 text-center py-2">Non soumis au comité</p>
-                    <button 
-                      onClick={() => soumettreComiteIA()}
-                      disabled={isSaving}
-                      className="w-full px-3 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 flex items-center justify-center gap-2"
-                    >
-                      {isSaving ? '⏳ Envoi...' : '📤 Soumettre au Comité IA'}
-                    </button>
-                  </div>
-                )}
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center">Non planifié</p>
+                  )}
+                  <button 
+                    onClick={() => soumettreComiteIA()}
+                    disabled={isSaving || !selectedProjet.dateComiteIA}
+                    className={`w-full px-3 py-2 rounded-lg flex items-center justify-center gap-2 ${
+                      selectedProjet.dateComiteIA 
+                        ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700' 
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {isSaving ? '⏳ Envoi...' : '📤 Notifier le Comité IA'}
+                  </button>
+                </div>
               </div>
               
               <div className="bg-white rounded-lg shadow p-4">
