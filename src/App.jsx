@@ -315,33 +315,57 @@ export default function App() {
     }
   };
 
-  // Générer fichier ICS pour Outlook
+  // Générer fichier ICS pour téléchargement simple
   const generateICS = (tache, collab) => {
     const projet = projets.find(p => p.id === tache.projetId);
-    const dateDebut = tache.dateDebut ? new Date(tache.dateDebut) : new Date();
-    const dateFin = tache.dateFin ? new Date(tache.dateFin) : dateDebut;
+    
+    // Parser les dates correctement
+    const parseDate = (dateStr) => {
+      if (!dateStr) return new Date();
+      const parts = dateStr.split('-');
+      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    };
+    
+    const dateDebut = parseDate(tache.dateDebut);
+    const dateFin = tache.dateFin ? parseDate(tache.dateFin) : dateDebut;
     
     // Formater les dates en format ICS (YYYYMMDD)
     const formatDateICS = (date) => {
-      return date.toISOString().split('T')[0].replace(/-/g, '');
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}${m}${d}`;
     };
     
     // Ajouter 1 jour à la date de fin pour les événements "toute la journée"
     const dateFinPlusUn = new Date(dateFin);
     dateFinPlusUn.setDate(dateFinPlusUn.getDate() + 1);
     
-    const icsContent = `BEGIN:VCALENDAR
+    // Récupérer l'email du collaborateur
+    const collabInfo = collab || collaborateurs.find(c => c.id === tache.assigne || c.recordId === tache.assigne);
+    const attendeeEmail = collabInfo?.email || '';
+    
+    let icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//API & YOU//Sprint Board COMEX 2026//FR
+METHOD:REQUEST
 BEGIN:VEVENT
 UID:${tache.id}@sprintboard.apiyou.fr
 DTSTAMP:${formatDateICS(new Date())}T000000Z
 DTSTART;VALUE=DATE:${formatDateICS(dateDebut)}
 DTEND;VALUE=DATE:${formatDateICS(dateFinPlusUn)}
-SUMMARY:${tache.name}
-DESCRIPTION:Projet: ${projet?.name || 'Non défini'}\\nDurée estimée: ${tache.dureeEstimee}h\\n${tache.commentaire || ''}
-CATEGORIES:Sprint Board,${projet?.name || 'Projet'}
-STATUS:${tache.status === 'done' ? 'COMPLETED' : 'CONFIRMED'}
+SUMMARY:[${projet?.name || 'Projet'}] ${tache.name}
+DESCRIPTION:Projet: ${projet?.name || 'Non défini'}\\nTâche: ${tache.name}\\nDurée estimée: ${tache.dureeEstimee}h\\n${tache.commentaire || ''}
+CATEGORIES:Sprint Board,COMEX 2026
+STATUS:CONFIRMED
+ORGANIZER;CN=Sprint Board:mailto:noreply@apiyou.fr`;
+
+    if (attendeeEmail) {
+      icsContent += `
+ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${collabInfo?.name || ''}:mailto:${attendeeEmail}`;
+    }
+
+    icsContent += `
 END:VEVENT
 END:VCALENDAR`;
     
@@ -350,11 +374,72 @@ END:VCALENDAR`;
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${tache.name.replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
+    link.download = `invitation_${tache.name.replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  // Envoyer invitation Outlook (ouvre Outlook Web ou l'app Outlook)
+  const envoyerInvitationOutlook = (tache, collab) => {
+    const projet = projets.find(p => p.id === tache.projetId);
+    
+    // Parser les dates correctement
+    const parseDate = (dateStr) => {
+      if (!dateStr) return new Date();
+      const parts = dateStr.split('-');
+      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    };
+    
+    const dateDebut = parseDate(tache.dateDebut);
+    const dateFin = tache.dateFin ? parseDate(tache.dateFin) : dateDebut;
+    
+    // Récupérer l'email du collaborateur
+    const collabInfo = collab || collaborateurs.find(c => c.id === tache.assigne || c.recordId === tache.assigne);
+    const attendeeEmail = collabInfo?.email || '';
+    
+    if (!attendeeEmail) {
+      alert(`Impossible d'envoyer l'invitation : ${collabInfo?.name || 'Ce collaborateur'} n'a pas d'email enregistré.`);
+      return;
+    }
+    
+    // Formater les dates pour Outlook Web (format ISO)
+    const formatDateOutlook = (date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+    
+    // Ajouter 1 jour à la date de fin (Outlook utilise date exclusive pour allday)
+    const dateFinPlusUn = new Date(dateFin);
+    dateFinPlusUn.setDate(dateFinPlusUn.getDate() + 1);
+    
+    const subject = encodeURIComponent(`[${projet?.name || 'Projet'}] ${tache.name}`);
+    const body = encodeURIComponent(`Bonjour ${collabInfo?.name || ''},
+
+Vous êtes invité(e) à travailler sur la tâche suivante :
+
+📋 Projet : ${projet?.name || 'Non défini'}
+✅ Tâche : ${tache.name}
+⏱️ Durée estimée : ${tache.dureeEstimee}h
+📅 Période : du ${dateDebut.toLocaleDateString('fr-FR')} au ${dateFin.toLocaleDateString('fr-FR')}
+
+${tache.commentaire ? `📝 Commentaire : ${tache.commentaire}` : ''}
+
+---
+Invitation envoyée depuis Sprint Board COMEX 2026`);
+
+    const startDate = formatDateOutlook(dateDebut);
+    const endDate = formatDateOutlook(dateFinPlusUn);
+    
+    // URL Outlook Web pour créer un événement avec invitation
+    // Format: https://outlook.office.com/calendar/0/deeplink/compose?subject=...&startdt=...&enddt=...&to=...&body=...&allday=true
+    const outlookWebUrl = `https://outlook.office.com/calendar/0/deeplink/compose?subject=${subject}&startdt=${startDate}&enddt=${endDate}&to=${encodeURIComponent(attendeeEmail)}&body=${body}&allday=true`;
+    
+    // Ouvrir dans un nouvel onglet
+    window.open(outlookWebUrl, '_blank');
   };
 
   // Document handlers
@@ -753,10 +838,10 @@ END:VCALENDAR`;
                                   <div className="flex gap-1 flex-shrink-0">
                                     {(tache.dateDebut || tache.dateFin) && (
                                       <button 
-                                        onClick={() => generateICS(tache, assigne)} 
+                                        onClick={() => envoyerInvitationOutlook(tache, assigne)} 
                                         className="p-2 text-purple-500 hover:bg-purple-50 rounded" 
-                                        title="Ajouter à Outlook"
-                                      >📤</button>
+                                        title="Envoyer invitation Outlook au collaborateur"
+                                      >📧</button>
                                     )}
                                     <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Modifier">✏️</button>
                                     <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
@@ -1885,10 +1970,22 @@ END:VCALENDAR`;
                 // Filtrer les tâches qui ont des dates dans cette semaine
                 const tachesSemaine = calendrierTaches.filter(t => {
                   if (!t.dateDebut) return false;
-                  const debut = new Date(t.dateDebut);
-                  const fin = t.dateFin ? new Date(t.dateFin) : debut;
-                  const weekStart = new Date(week.start);
-                  const weekEnd = new Date(week.end);
+                  
+                  // Parser les dates correctement (format YYYY-MM-DD)
+                  const debutParts = t.dateDebut.split('-');
+                  const debut = new Date(parseInt(debutParts[0]), parseInt(debutParts[1]) - 1, parseInt(debutParts[2]));
+                  
+                  let fin = debut;
+                  if (t.dateFin) {
+                    const finParts = t.dateFin.split('-');
+                    fin = new Date(parseInt(finParts[0]), parseInt(finParts[1]) - 1, parseInt(finParts[2]));
+                  }
+                  
+                  // Normaliser les dates de la semaine
+                  const weekStart = new Date(week.start.getFullYear(), week.start.getMonth(), week.start.getDate());
+                  const weekEnd = new Date(week.end.getFullYear(), week.end.getMonth(), week.end.getDate());
+                  
+                  // La tâche est dans la semaine si elle chevauche la période
                   return debut <= weekEnd && fin >= weekStart;
                 });
                 
@@ -1913,20 +2010,38 @@ END:VCALENDAR`;
                     <div className="grid grid-cols-7 gap-2 min-h-[400px]">
                       {jours.map((jour, jourIdx) => {
                         const isWeekend = jourIdx >= 5;
-                        const jourStr = jour.toISOString().split('T')[0];
+                        
+                        // Normaliser la date du jour (sans heure) pour comparaison
+                        const jourNormalise = new Date(jour.getFullYear(), jour.getMonth(), jour.getDate());
                         
                         // Tâches qui couvrent ce jour
                         const tachesJour = tachesSemaine.filter(t => {
-                          const debut = new Date(t.dateDebut);
-                          const fin = t.dateFin ? new Date(t.dateFin) : debut;
-                          return jour >= new Date(debut.toISOString().split('T')[0]) && jour <= new Date(fin.toISOString().split('T')[0]);
+                          // Parser les dates et normaliser (sans heure)
+                          const debutParts = t.dateDebut.split('-');
+                          const debut = new Date(parseInt(debutParts[0]), parseInt(debutParts[1]) - 1, parseInt(debutParts[2]));
+                          
+                          let fin = debut;
+                          if (t.dateFin) {
+                            const finParts = t.dateFin.split('-');
+                            fin = new Date(parseInt(finParts[0]), parseInt(finParts[1]) - 1, parseInt(finParts[2]));
+                          }
+                          
+                          // Vérifier si le jour est dans la plage [debut, fin]
+                          return jourNormalise >= debut && jourNormalise <= fin;
                         });
                         
                         // Calculer heures totales du jour
                         const heuresTotales = tachesJour.reduce((sum, t) => {
-                          const debut = new Date(t.dateDebut);
-                          const fin = t.dateFin ? new Date(t.dateFin) : debut;
-                          const nbJours = Math.max(1, Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1);
+                          const debutParts = t.dateDebut.split('-');
+                          const debut = new Date(parseInt(debutParts[0]), parseInt(debutParts[1]) - 1, parseInt(debutParts[2]));
+                          
+                          let fin = debut;
+                          if (t.dateFin) {
+                            const finParts = t.dateFin.split('-');
+                            fin = new Date(parseInt(finParts[0]), parseInt(finParts[1]) - 1, parseInt(finParts[2]));
+                          }
+                          
+                          const nbJours = Math.max(1, Math.round((fin - debut) / (1000 * 60 * 60 * 24)) + 1);
                           return sum + (t.dureeEstimee / nbJours);
                         }, 0);
                         
@@ -1948,27 +2063,54 @@ END:VCALENDAR`;
                               {tachesJour.map(tache => {
                                 const projet = projets.find(p => p.id === tache.projetId);
                                 const statut = STATUTS.find(s => s.id === tache.status);
-                                const debut = new Date(tache.dateDebut);
-                                const fin = tache.dateFin ? new Date(tache.dateFin) : debut;
-                                const nbJours = Math.max(1, Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1);
+                                
+                                const debutParts = tache.dateDebut.split('-');
+                                const debut = new Date(parseInt(debutParts[0]), parseInt(debutParts[1]) - 1, parseInt(debutParts[2]));
+                                
+                                let fin = debut;
+                                if (tache.dateFin) {
+                                  const finParts = tache.dateFin.split('-');
+                                  fin = new Date(parseInt(finParts[0]), parseInt(finParts[1]) - 1, parseInt(finParts[2]));
+                                }
+                                
+                                const nbJours = Math.max(1, Math.round((fin - debut) / (1000 * 60 * 60 * 24)) + 1);
                                 const heuresJour = (tache.dureeEstimee / nbJours).toFixed(1);
                                 
                                 return (
                                   <div 
                                     key={tache.id}
-                                    className="p-2 rounded-lg text-white text-xs cursor-pointer hover:opacity-90 transition-all shadow-sm"
+                                    className="p-2 rounded-lg text-white text-xs cursor-pointer hover:opacity-90 hover:scale-[1.02] transition-all shadow-sm"
                                     style={{ backgroundColor: statut?.color || '#6B7280' }}
-                                    title={`${tache.name}\n${projet?.name || ''}\n${tache.dureeEstimee}h total`}
+                                    title={`${tache.name}\n${projet?.name || ''}\n${tache.dureeEstimee}h total\nCliquez pour modifier`}
+                                    onClick={() => {
+                                      // Fermer le calendrier et ouvrir la tâche en édition
+                                      setShowCalendrierCollab(false);
+                                      // Trouver et sélectionner le projet associé
+                                      if (projet) {
+                                        setSelectedProjet(projet);
+                                        // Charger les tâches du projet puis ouvrir l'éditeur
+                                        fetch(`${API_URL}?table=taches&projetId=${projet.id}`)
+                                          .then(res => res.json())
+                                          .then(data => {
+                                            setProjetTaches(data.taches || []);
+                                            setEditingTache(tache);
+                                            setShowTacheModal(true);
+                                          });
+                                      } else {
+                                        setEditingTache(tache);
+                                        setShowTacheModal(true);
+                                      }
+                                    }}
                                   >
                                     <div className="font-medium truncate">{tache.name}</div>
                                     <div className="flex items-center justify-between mt-1 opacity-80">
                                       <span>{heuresJour}h</span>
                                       <button
-                                        onClick={(e) => { e.stopPropagation(); generateICS(tache, calendrierCollab); }}
+                                        onClick={(e) => { e.stopPropagation(); envoyerInvitationOutlook(tache, calendrierCollab); }}
                                         className="px-1.5 py-0.5 bg-white/20 rounded hover:bg-white/30 text-[10px]"
-                                        title="Ajouter à Outlook"
+                                        title="Envoyer invitation Outlook"
                                       >
-                                        📤
+                                        📧
                                       </button>
                                     </div>
                                     {projet && <div className="truncate opacity-70 mt-1">{projet.name}</div>}
