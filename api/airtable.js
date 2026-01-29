@@ -148,6 +148,7 @@ export default async function handler(req, res) {
             referentConformite: record.fields.ReferentConformite || '',
             meneur: record.fields.Meneur || '',
             sprintsNoms: record.fields.SprintsNoms || '',
+            dateComiteIA: record.fields.DateComiteIA || null,
             documents: [...documents, ...fichiers],
           };
         });
@@ -205,7 +206,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, objectif, referentComiteIA, referentConformite, meneur, sprintsNoms } = req.body;
+        const { id, name, chantierId, weekStart, weekEnd, collaborateurs, status, commentaire, avancement, objectif, referentComiteIA, referentConformite, meneur, sprintsNoms, dateComiteIA } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         // Construire les champs à mettre à jour (seulement ceux fournis)
@@ -223,6 +224,7 @@ export default async function handler(req, res) {
         if (referentConformite !== undefined) fieldsToUpdate.ReferentConformite = referentConformite || '';
         if (meneur !== undefined) fieldsToUpdate.Meneur = meneur || '';
         if (sprintsNoms !== undefined) fieldsToUpdate.SprintsNoms = sprintsNoms || '';
+        if (dateComiteIA !== undefined) fieldsToUpdate.DateComiteIA = dateComiteIA || null;
 
         const response = await fetch(getAirtableUrl(TABLES.items), {
           method: 'PATCH',
