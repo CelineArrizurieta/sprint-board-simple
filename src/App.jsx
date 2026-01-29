@@ -315,19 +315,9 @@ export default function App() {
     }
   };
 
-  // Envoyer invitation Outlook - Génère un fichier .ics qui ouvre Outlook directement
-  const envoyerInvitationOutlook = (tache, collab) => {
+  // Envoyer notification par email via Make webhook
+  const envoyerInvitationOutlook = async (tache, collab) => {
     const projet = projets.find(p => p.id === tache.projetId);
-    
-    // Parser les dates correctement
-    const parseDate = (dateStr) => {
-      if (!dateStr) return new Date();
-      const parts = dateStr.split('-');
-      return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    };
-    
-    const dateDebut = parseDate(tache.dateDebut);
-    const dateFin = tache.dateFin ? parseDate(tache.dateFin) : dateDebut;
     
     // Récupérer l'email du collaborateur
     const collabInfo = collab || collaborateurs.find(c => c.id === tache.assigne || c.recordId === tache.assigne);
@@ -335,76 +325,49 @@ export default function App() {
     const attendeeName = collabInfo?.name || '';
     
     if (!attendeeEmail) {
-      alert(`⚠️ Impossible d'envoyer l'invitation :\n\n${attendeeName || 'Ce collaborateur'} n'a pas d'email enregistré dans Airtable.\n\nVeuillez d'abord ajouter son email dans la fiche collaborateur.`);
+      alert(`⚠️ Impossible d'envoyer l'email :\n\n${attendeeName || 'Ce collaborateur'} n'a pas d'email enregistré dans Airtable.`);
       return;
     }
     
-    // Formater les dates en format ICS (YYYYMMDD)
-    const formatDateICS = (date) => {
-      const y = date.getFullYear();
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const d = String(date.getDate()).padStart(2, '0');
-      return `${y}${m}${d}`;
-    };
-    
-    // Formater date lisible pour la description
-    const formatDateFR = (date) => {
+    // Formater les dates
+    const formatDateFR = (dateStr) => {
+      if (!dateStr) return 'Non définie';
+      const parts = dateStr.split('-');
+      const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
       return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     };
     
-    // Ajouter 1 jour à la date de fin pour les événements "toute la journée" (ICS utilise date exclusive)
-    const dateFinPlusUn = new Date(dateFin);
-    dateFinPlusUn.setDate(dateFinPlusUn.getDate() + 1);
+    // Données à envoyer au webhook Make
+    const webhookData = {
+      destinataire: attendeeEmail,
+      nomDestinataire: attendeeName,
+      projet: projet?.name || 'Projet non défini',
+      tache: tache.name,
+      dateDebut: formatDateFR(tache.dateDebut),
+      dateFin: formatDateFR(tache.dateFin),
+      duree: `${tache.dureeEstimee}h`,
+      commentaire: tache.commentaire || ''
+    };
     
-    // Timestamp actuel pour DTSTAMP
-    const now = new Date();
-    const dtstamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}Z`;
-    
-    // Description avec retours à la ligne ICS (\\n)
-    const description = `Bonjour ${attendeeName},\\n\\nVous êtes invité(e) à travailler sur cette tâche :\\n\\n` +
-      `📋 PROJET : ${projet?.name || 'Non défini'}\\n` +
-      `✅ TÂCHE : ${tache.name}\\n` +
-      `⏱️ DURÉE ESTIMÉE : ${tache.dureeEstimee}h\\n` +
-      `📅 PÉRIODE : Du ${formatDateFR(dateDebut)} au ${formatDateFR(dateFin)}\\n` +
-      (tache.commentaire ? `\\n📝 COMMENTAIRE :\\n${tache.commentaire}\\n` : '') +
-      `\\n---\\nInvitation envoyée depuis Sprint Board COMEX 2026`;
-    
-    // Générer le fichier ICS avec METHOD:REQUEST pour que ce soit une invitation
-    const icsContent = `BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//API & YOU//Sprint Board COMEX 2026//FR
-METHOD:REQUEST
-BEGIN:VEVENT
-UID:${tache.id}-${Date.now()}@sprintboard.apiyou.fr
-SEQUENCE:0
-DTSTAMP:${dtstamp}
-DTSTART;VALUE=DATE:${formatDateICS(dateDebut)}
-DTEND;VALUE=DATE:${formatDateICS(dateFinPlusUn)}
-SUMMARY:[${projet?.name || 'Projet'}] ${tache.name}
-DESCRIPTION:${description}
-LOCATION:API & YOU
-CATEGORIES:Sprint Board,COMEX 2026
-PRIORITY:5
-STATUS:CONFIRMED
-TRANSP:OPAQUE
-ORGANIZER;CN=Sprint Board COMEX 2026:mailto:planning@apiyou.fr
-ATTENDEE;CUTYPE=INDIVIDUAL;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE;CN=${attendeeName}:mailto:${attendeeEmail}
-END:VEVENT
-END:VCALENDAR`;
-    
-    // Créer et télécharger le fichier - Outlook l'ouvrira automatiquement
-    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Invitation_${attendeeName.replace(/[^a-zA-Z0-9]/g, '_')}_${tache.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 30)}.ics`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    
-    // Notification de succès
-    alert(`✅ Fichier d'invitation téléchargé !\n\n1. Ouvrez le fichier .ics téléchargé\n2. Outlook s'ouvre avec la réunion pré-remplie\n3. Cliquez sur "Envoyer" pour inviter ${attendeeName}`);
+    try {
+      // Appel au webhook Make
+      const response = await fetch('https://hook.eu2.make.com/5e3xt9c49zd4nib3e6yh7u8dxrizz6ma', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(webhookData),
+      });
+      
+      if (response.ok) {
+        alert(`✅ Email envoyé à ${attendeeName} !\n\n📧 ${attendeeEmail}`);
+      } else {
+        throw new Error('Erreur webhook');
+      }
+    } catch (err) {
+      console.error('Erreur envoi email:', err);
+      alert(`❌ Erreur lors de l'envoi de l'email.\n\nVérifie que le scénario Make est activé.`);
+    }
   };
 
   // Document handlers
