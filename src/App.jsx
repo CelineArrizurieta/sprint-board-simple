@@ -162,7 +162,7 @@ export default function App() {
     objectif: '', referentComiteIA: '', referentConformite: '', meneur: ''
   });
   const [newTache, setNewTache] = useState({
-    name: '', projetId: '', sprint: 'Sprint 1', assigne: '',
+    name: '', projetId: '', sprint: 'Sprint 1', capitaine: '', equipe: [],
     dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '',
     dateDebut: '', dateFin: ''
   });
@@ -726,8 +726,16 @@ export default function App() {
     try {
       const datePresentation = selectedProjet.dateComiteIA || '';
       
-      // Récupérer l'équipe du projet
-      const equipeNoms = (selectedProjet.collaborateurs || [])
+      // Récupérer l'équipe depuis les tâches du projet (capitaines + équipes, sans doublons)
+      const projetTaches = taches.filter(t => t.projetId === selectedProjet.id);
+      const allIds = new Set();
+      projetTaches.forEach(t => {
+        if (t.capitaine) allIds.add(t.capitaine);
+        if (t.equipe && Array.isArray(t.equipe)) {
+          t.equipe.forEach(id => allIds.add(id));
+        }
+      });
+      const equipeNoms = [...allIds]
         .map(id => getCollab(id))
         .filter(Boolean)
         .map(c => c.name)
@@ -847,19 +855,8 @@ export default function App() {
                 </div>
               )}
               <div className="bg-white rounded-lg shadow p-4">
-                <h3 className="font-semibold text-gray-800 mb-3">👥 Équipe du projet</h3>
+                <h3 className="font-semibold text-gray-800 mb-3">👥 Gouvernance</h3>
                 <div className="space-y-3">
-                  {meneur && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">🏅</span>
-                      <span className="text-xs text-gray-500 w-20">Meneur</span>
-                      <div className="flex items-center gap-2">
-                        {meneur.photo ? <img src={meneur.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
-                          : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: meneur.color }}>{meneur.name.charAt(0)}</div>}
-                        <div><div className="font-medium text-sm">{meneur.name}</div><div className="text-xs text-gray-500">{meneur.role}</div></div>
-                      </div>
-                    </div>
-                  )}
                   {referentIA && (
                     <div className="flex items-center gap-3">
                       <span className="text-lg">🎯</span>
@@ -879,20 +876,6 @@ export default function App() {
                         {referentConf.photo ? <img src={referentConf.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
                           : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: referentConf.color }}>{referentConf.name.charAt(0)}</div>}
                         <div><div className="font-medium text-sm">{referentConf.name}</div><div className="text-xs text-gray-500">{referentConf.role}</div></div>
-                      </div>
-                    </div>
-                  )}
-                  {equipe.length > 0 && (
-                    <div>
-                      <div className="flex items-center gap-2 mb-2"><span className="text-lg">🏃</span><span className="text-xs text-gray-500">Équipe</span></div>
-                      <div className="flex flex-wrap gap-2 ml-7">
-                        {equipe.map(c => (
-                          <div key={c.id} className="flex items-center gap-1" title={`${c.name} - ${c.role}`}>
-                            {c.photo ? <img src={c.photo} alt="" className="w-7 h-7 rounded-full object-cover" />
-                              : <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: c.color }}>{c.name.charAt(0)}</div>}
-                            <span className="text-xs text-gray-600">{c.name.split(' ')[0]}</span>
-                          </div>
-                        ))}
                       </div>
                     </div>
                   )}
@@ -1034,24 +1017,26 @@ export default function App() {
                         ) : (
                           <div className="divide-y">
                             {sprintTaches.map(tache => {
-                              const assigne = getCollab(tache.assigne);
+                              const capitaine = getCollab(tache.capitaine);
+                              const equipeCollabs = (tache.equipe || []).map(id => getCollab(id)).filter(Boolean);
                               const isDone = tache.status === 'done';
                               return (
                                 <div key={tache.id} draggable="true" onDragStart={(e) => handleDragStart(e, tache)} onDragEnd={handleDragEnd}
                                   className={`p-4 hover:bg-gray-50 flex items-center gap-4 cursor-grab active:cursor-grabbing transition-all ${draggedTache?.id === tache.id ? 'opacity-50 bg-purple-50' : ''}`}>
                                   <div className="text-gray-400 cursor-grab">⋮⋮</div>
-                                  {/* Photo du collaborateur assigné à gauche */}
+                                  {/* Photo du capitaine à gauche */}
                                   <div className="flex-shrink-0" onClick={() => toggleTacheStatus(tache)} title={isDone ? "Marquer à faire" : "Marquer terminé"}>
-                                    {assigne ? (
+                                    {capitaine ? (
                                       <div className={`relative ${isDone ? 'opacity-60' : ''}`}>
-                                        {assigne.photo ? (
-                                          <img src={assigne.photo} alt={assigne.name} className={`w-10 h-10 rounded-full object-cover border-2 ${isDone ? 'border-green-500' : 'border-gray-200 hover:border-purple-400'} cursor-pointer transition-all`} />
+                                        {capitaine.photo ? (
+                                          <img src={capitaine.photo} alt={capitaine.name} className={`w-10 h-10 rounded-full object-cover border-2 ${isDone ? 'border-green-500' : 'border-yellow-400 hover:border-purple-400'} cursor-pointer transition-all`} />
                                         ) : (
-                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm border-2 ${isDone ? 'border-green-500' : 'border-transparent hover:border-purple-400'} cursor-pointer transition-all`} 
-                                            style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>
+                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm border-2 ${isDone ? 'border-green-500' : 'border-yellow-400 hover:border-purple-400'} cursor-pointer transition-all`} 
+                                            style={{ backgroundColor: capitaine.color }}>{capitaine.name.charAt(0)}</div>
                                         )}
+                                        <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center text-xs">🏅</div>
                                         {isDone && (
-                                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
+                                          <div className="absolute -top-1 -left-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
                                         )}
                                       </div>
                                     ) : (
@@ -1060,11 +1045,32 @@ export default function App() {
                                       </div>
                                     )}
                                   </div>
+                                  {/* Équipe */}
+                                  {equipeCollabs.length > 0 && (
+                                    <div className="flex -space-x-2 flex-shrink-0">
+                                      {equipeCollabs.slice(0, 4).map(membre => (
+                                        <div key={membre.id} title={membre.name} className="relative">
+                                          {membre.photo ? (
+                                            <img src={membre.photo} alt={membre.name} className="w-8 h-8 rounded-full object-cover border-2 border-white" />
+                                          ) : (
+                                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs border-2 border-white" 
+                                              style={{ backgroundColor: membre.color }}>{membre.name.charAt(0)}</div>
+                                          )}
+                                        </div>
+                                      ))}
+                                      {equipeCollabs.length > 4 && (
+                                        <div className="w-8 h-8 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center text-xs text-gray-600">
+                                          +{equipeCollabs.length - 4}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                   <div className="flex-1 min-w-0">
                                     <div className={`font-medium truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
                                     {tache.commentaire && <div className="text-sm text-gray-500 truncate">{tache.commentaire}</div>}
-                                    <div className="flex items-center gap-2 mt-1">
-                                      {assigne && <span className="text-xs text-gray-400">{assigne.name}</span>}
+                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                      {capitaine && <span className="text-xs text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded">🏅 {capitaine.name}</span>}
+                                      {equipeCollabs.length > 0 && <span className="text-xs text-gray-400">{equipeCollabs.map(c => c.name).join(', ')}</span>}
                                       {(tache.dateDebut || tache.dateFin) && (
                                         <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded">
                                           📅 {tache.dateDebut ? new Date(tache.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'} → {tache.dateFin ? new Date(tache.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'}
@@ -1077,11 +1083,11 @@ export default function App() {
                                     <div>✅ {tache.heuresReelles}h réel</div>
                                   </div>
                                   <div className="flex gap-1 flex-shrink-0">
-                                    {(tache.dateDebut || tache.dateFin) && (
+                                    {(tache.dateDebut || tache.dateFin) && capitaine && (
                                       <button 
-                                        onClick={() => envoyerInvitationOutlook(tache, assigne)} 
+                                        onClick={() => envoyerInvitationOutlook(tache, capitaine)} 
                                         className="p-2 text-purple-500 hover:bg-purple-50 rounded" 
-                                        title="Envoyer invitation Outlook au collaborateur"
+                                        title="Envoyer invitation Outlook au capitaine"
                                       >📧</button>
                                     )}
                                     <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Modifier">✏️</button>
@@ -1278,49 +1284,38 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Assigné</label>
-                    {(() => {
-                      // Séparer l'équipe du projet des autres collaborateurs
-                      const equipeProjetIds = selectedProjet?.collaborateurs || [];
-                      const meneurId = selectedProjet?.meneur;
-                      const refIAId = selectedProjet?.referentComiteIA;
-                      const refConfId = selectedProjet?.referentConformite;
-                      const allEquipeIds = [...new Set([meneurId, refIAId, refConfId, ...equipeProjetIds].filter(Boolean))];
-                      
-                      const equipeProjet = allEquipeIds.map(id => getCollab(id)).filter(Boolean);
-                      const autresCollabs = collaborateurs.filter(c => !allEquipeIds.includes(c.id) && !allEquipeIds.includes(c.recordId));
-                      
-                      // Grouper les autres par service
-                      const autresParService = autresCollabs.reduce((acc, c) => {
-                        const service = c.service || 'Autre';
-                        if (!acc[service]) acc[service] = [];
-                        acc[service].push(c);
-                        return acc;
-                      }, {});
-                      
+                    <label className="block text-sm font-medium text-gray-700 mb-1">🏅 Capitaine</label>
+                    <select value={editingTache?.capitaine || newTache.capitaine || ''}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, capitaine: e.target.value }) : setNewTache({ ...newTache, capitaine: e.target.value })}
+                      className="w-full p-3 border rounded-lg">
+                      <option value="">— Choisir un capitaine —</option>
+                      {collaborateurs.map(c => <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name} - {c.service || 'N/A'}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">👥 Équipe</label>
+                  <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 border rounded-lg">
+                    {collaborateurs.map(collab => {
+                      const equipeIds = editingTache?.equipe || newTache.equipe || [];
+                      const isSelected = equipeIds.includes(collab.recordId || collab.id);
                       return (
-                        <select value={editingTache?.assigne || newTache.assigne}
-                          onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
-                          className="w-full p-3 border rounded-lg">
-                          <option value="">— Non assigné —</option>
-                          {equipeProjet.length > 0 && (
-                            <optgroup label="👥 Équipe du projet">
-                              {equipeProjet.map(c => (
-                                <option key={c.recordId || c.id} value={c.recordId || c.id}>
-                                  {c.name}{c.id === meneurId || c.recordId === meneurId ? ' 🏅' : ''}{c.id === refIAId || c.recordId === refIAId ? ' 🎯' : ''}{c.id === refConfId || c.recordId === refConfId ? ' 🔒' : ''}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          <optgroup label="───────────────"></optgroup>
-                          {Object.entries(autresParService).map(([service, collabs]) => (
-                            <optgroup key={service} label={`🏢 ${service}`}>
-                              {collabs.map(c => <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name}</option>)}
-                            </optgroup>
-                          ))}
-                        </select>
+                        <button key={collab.recordId || collab.id} type="button"
+                          onClick={() => {
+                            const collabId = collab.recordId || collab.id;
+                            const updated = isSelected 
+                              ? equipeIds.filter(id => id !== collabId) 
+                              : [...equipeIds, collabId];
+                            editingTache 
+                              ? setEditingTache({ ...editingTache, equipe: updated }) 
+                              : setNewTache({ ...newTache, equipe: updated });
+                          }}
+                          className={`px-2 py-1 rounded text-xs ${isSelected ? 'text-white' : 'bg-gray-100 text-gray-700'}`}
+                          style={isSelected ? { backgroundColor: collab.color || '#8b5cf6' } : {}}>
+                          {collab.name}
+                        </button>
                       );
-                    })()}
+                    })}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1405,7 +1400,7 @@ export default function App() {
                     onChange={(e) => setNewDocument({ ...newDocument, url: e.target.value })}
                     placeholder="https://..."
                     className="w-full p-3 border rounded-lg" />
-                  <p className="text-xs text-gray-500 mt-1">OneDrive, Google Drive, Notion, ou tout autre lien</p>
+                  <p className="text-xs text-gray-500 mt-1">OneDrive, Google Drive, Notion, Redmine ou tout autre lien</p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Type de document</label>
@@ -1414,6 +1409,7 @@ export default function App() {
                       { id: 'onedrive', label: '📘 OneDrive', color: 'blue' },
                       { id: 'gdrive', label: '📗 Google Drive', color: 'green' },
                       { id: 'notion', label: '📓 Notion', color: 'gray' },
+                      { id: 'redmine', label: '🔴 Redmine', color: 'red' },
                       { id: 'other', label: '🔗 Autre', color: 'purple' },
                     ].map(t => (
                       <button key={t.id} type="button"
