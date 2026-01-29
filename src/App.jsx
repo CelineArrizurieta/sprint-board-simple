@@ -329,6 +329,16 @@ export default function App() {
       return;
     }
     
+    // Récupérer le directeur du collaborateur (même service + EstDirecteur coché)
+    const serviceCollab = collabInfo?.service;
+    const directeur = collaborateurs.find(c => 
+      c.service === serviceCollab && 
+      c.estDirecteur === true &&
+      c.id !== collabInfo?.id // Exclure si c'est lui-même
+    );
+    const directeurEmail = directeur?.email || '';
+    const directeurName = directeur?.name || '';
+    
     // Formater les dates
     const formatDateFR = (dateStr) => {
       if (!dateStr) return 'Non définie';
@@ -339,8 +349,13 @@ export default function App() {
     
     // Données à envoyer au webhook Make
     const webhookData = {
+      // Destinataire principal (collaborateur)
       destinataire: attendeeEmail,
       nomDestinataire: attendeeName,
+      // Directeur en copie
+      directeurEmail: directeurEmail,
+      directeurName: directeurName,
+      // Infos tâche
       projet: projet?.name || 'Projet non défini',
       tache: tache.name,
       dateDebut: formatDateFR(tache.dateDebut),
@@ -360,7 +375,11 @@ export default function App() {
       });
       
       if (response.ok) {
-        alert(`✅ Email envoyé à ${attendeeName} !\n\n📧 ${attendeeEmail}`);
+        let message = `✅ Email envoyé à ${attendeeName} !\n\n📧 ${attendeeEmail}`;
+        if (directeurEmail) {
+          message += `\n\n📋 Copie envoyée à ${directeurName}\n📧 ${directeurEmail}`;
+        }
+        alert(message);
       } else {
         throw new Error('Erreur webhook');
       }
