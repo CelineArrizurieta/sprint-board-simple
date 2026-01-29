@@ -96,7 +96,8 @@ export default function App() {
   });
   const [newTache, setNewTache] = useState({
     name: '', projetId: '', sprint: 'Sprint 1', assigne: '',
-    dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: ''
+    dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '',
+    dateDebut: '', dateFin: ''
   });
   const [filtreAxe, setFiltreAxe] = useState('');
   const [filtreChantier, setFiltreChantier] = useState('');
@@ -116,6 +117,19 @@ export default function App() {
   const [equipagePoleFilter, setEquipagePoleFilter] = useState('');
   const [equipageRoleFilter, setEquipageRoleFilter] = useState('');
   const [selectedCollaborateur, setSelectedCollaborateur] = useState(null);
+  
+  // Calendrier collaborateur state
+  const [showCalendrierCollab, setShowCalendrierCollab] = useState(false);
+  const [calendrierCollab, setCalendrierCollab] = useState(null);
+  const [calendrierSemaine, setCalendrierSemaine] = useState(() => {
+    // Commencer à la semaine actuelle
+    const today = new Date();
+    const startOfYear = new Date(2026, 0, 1);
+    const diffTime = today - startOfYear;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(1, Math.min(53, Math.ceil(diffDays / 7)));
+  });
+  const [calendrierTaches, setCalendrierTaches] = useState([]);
 
   const handleLogin = () => {
     if (passwordInput === 'ApiYou2026') {
@@ -277,6 +291,70 @@ export default function App() {
   const toggleTacheStatus = async (tache) => {
     const newStatus = tache.status === 'done' ? 'todo' : 'done';
     await saveTache({ ...tache, status: newStatus });
+  };
+
+  // Ouvrir le calendrier d'un collaborateur
+  const openCalendrierCollab = async (collab) => {
+    setCalendrierCollab(collab);
+    setShowCalendrierCollab(true);
+    setCalendrierTaches([]);
+    
+    try {
+      // Charger toutes les tâches
+      const response = await fetch(`${API_URL}?table=taches`);
+      const data = await response.json();
+      
+      // Filtrer les tâches assignées à ce collaborateur
+      const collabTaches = (data.taches || []).filter(t => 
+        t.assigne === collab.id || t.assigne === collab.recordId
+      );
+      
+      setCalendrierTaches(collabTaches);
+    } catch (err) {
+      console.error('Erreur chargement tâches calendrier:', err);
+    }
+  };
+
+  // Générer fichier ICS pour Outlook
+  const generateICS = (tache, collab) => {
+    const projet = projets.find(p => p.id === tache.projetId);
+    const dateDebut = tache.dateDebut ? new Date(tache.dateDebut) : new Date();
+    const dateFin = tache.dateFin ? new Date(tache.dateFin) : dateDebut;
+    
+    // Formater les dates en format ICS (YYYYMMDD)
+    const formatDateICS = (date) => {
+      return date.toISOString().split('T')[0].replace(/-/g, '');
+    };
+    
+    // Ajouter 1 jour à la date de fin pour les événements "toute la journée"
+    const dateFinPlusUn = new Date(dateFin);
+    dateFinPlusUn.setDate(dateFinPlusUn.getDate() + 1);
+    
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//API & YOU//Sprint Board COMEX 2026//FR
+BEGIN:VEVENT
+UID:${tache.id}@sprintboard.apiyou.fr
+DTSTAMP:${formatDateICS(new Date())}T000000Z
+DTSTART;VALUE=DATE:${formatDateICS(dateDebut)}
+DTEND;VALUE=DATE:${formatDateICS(dateFinPlusUn)}
+SUMMARY:${tache.name}
+DESCRIPTION:Projet: ${projet?.name || 'Non défini'}\\nDurée estimée: ${tache.dureeEstimee}h\\n${tache.commentaire || ''}
+CATEGORIES:Sprint Board,${projet?.name || 'Projet'}
+STATUS:${tache.status === 'done' ? 'COMPLETED' : 'CONFIRMED'}
+END:VEVENT
+END:VCALENDAR`;
+    
+    // Créer et télécharger le fichier
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${tache.name.replace(/[^a-zA-Z0-9]/g, '_')}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Document handlers
@@ -590,7 +668,7 @@ export default function App() {
             <div className="lg:col-span-3">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">📋 Feuille de route</h2>
-                <button onClick={() => { setNewTache({ name: '', projetId: selectedProjet.id, sprint: 'Sprint 1', assigne: '', dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '' }); setEditingTache(null); setShowTacheModal(true); }}
+                <button onClick={() => { setNewTache({ name: '', projetId: selectedProjet.id, sprint: 'Sprint 1', assigne: '', dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '', dateDebut: '', dateFin: '' }); setEditingTache(null); setShowTacheModal(true); }}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">➕ Nouvelle tâche</button>
               </div>
               <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-sm text-blue-700">
@@ -659,13 +737,27 @@ export default function App() {
                                   <div className="flex-1 min-w-0">
                                     <div className={`font-medium truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
                                     {tache.commentaire && <div className="text-sm text-gray-500 truncate">{tache.commentaire}</div>}
-                                    {assigne && <div className="text-xs text-gray-400 mt-1">{assigne.name}</div>}
+                                    <div className="flex items-center gap-2 mt-1">
+                                      {assigne && <span className="text-xs text-gray-400">{assigne.name}</span>}
+                                      {(tache.dateDebut || tache.dateFin) && (
+                                        <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded">
+                                          📅 {tache.dateDebut ? new Date(tache.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'} → {tache.dateFin ? new Date(tache.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                   <div className="text-sm text-gray-500 flex-shrink-0 text-right">
                                     <div>⏱️ {tache.dureeEstimee}h estimé</div>
                                     <div>✅ {tache.heuresReelles}h réel</div>
                                   </div>
                                   <div className="flex gap-1 flex-shrink-0">
+                                    {(tache.dateDebut || tache.dateFin) && (
+                                      <button 
+                                        onClick={() => generateICS(tache, assigne)} 
+                                        className="p-2 text-purple-500 hover:bg-purple-50 rounded" 
+                                        title="Ajouter à Outlook"
+                                      >📤</button>
+                                    )}
                                     <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Modifier">✏️</button>
                                     <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
                                   </div>
@@ -907,6 +999,21 @@ export default function App() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Heures réelles</label>
                     <input type="number" min="0" step="0.5" value={editingTache?.heuresReelles || newTache.heuresReelles}
                       onChange={(e) => editingTache ? setEditingTache({ ...editingTache, heuresReelles: parseFloat(e.target.value) || 0 }) : setNewTache({ ...newTache, heuresReelles: parseFloat(e.target.value) || 0 })}
+                      className="w-full p-3 border rounded-lg" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">📅 Date début</label>
+                    <input type="date" value={editingTache?.dateDebut || newTache.dateDebut || ''}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dateDebut: e.target.value }) : setNewTache({ ...newTache, dateDebut: e.target.value })}
+                      className="w-full p-3 border rounded-lg" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">📅 Date fin</label>
+                    <input type="date" value={editingTache?.dateFin || newTache.dateFin || ''}
+                      min={editingTache?.dateDebut || newTache.dateDebut || ''}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dateFin: e.target.value }) : setNewTache({ ...newTache, dateFin: e.target.value })}
                       className="w-full p-3 border rounded-lg" />
                   </div>
                 </div>
@@ -1494,6 +1601,16 @@ export default function App() {
                         </div>
                       </div>
                     )}
+                    
+                    {/* Bouton Planning */}
+                    <div className="pt-4 border-t">
+                      <button
+                        onClick={() => openCalendrierCollab(collab)}
+                        className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-medium hover:from-purple-700 hover:to-indigo-700 transition-all flex items-center justify-center gap-2 shadow-lg"
+                      >
+                        📅 Voir le planning
+                      </button>
+                    </div>
                   </div>
                 </>
               );
@@ -1686,6 +1803,218 @@ export default function App() {
               }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
                 {isSaving ? '⏳' : (editingProjet ? 'Modifier' : 'Créer')}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Calendrier Collaborateur - Style Outlook */}
+      {showCalendrierCollab && calendrierCollab && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b flex items-center justify-between bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-t-xl">
+              <div className="flex items-center gap-4">
+                {calendrierCollab.photo ? (
+                  <img src={calendrierCollab.photo} alt={calendrierCollab.name} className="w-12 h-12 rounded-full object-cover border-2 border-white/30" />
+                ) : (
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold bg-white/20">
+                    {calendrierCollab.name?.charAt(0)}
+                  </div>
+                )}
+                <div>
+                  <h2 className="text-xl font-bold">📅 Planning de {calendrierCollab.name}</h2>
+                  <p className="text-white/80 text-sm">{calendrierCollab.role}</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCalendrierCollab(false)} className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-xl">✕</button>
+            </div>
+            
+            {/* Navigation semaine */}
+            <div className="p-4 border-b flex items-center justify-between bg-gray-50">
+              <button 
+                onClick={() => setCalendrierSemaine(s => Math.max(1, s - 1))}
+                className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-100 font-medium"
+              >
+                ← Semaine précédente
+              </button>
+              <div className="flex items-center gap-4">
+                <button 
+                  onClick={() => {
+                    const today = new Date();
+                    const startOfYear = new Date(2026, 0, 1);
+                    const diffTime = today - startOfYear;
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    setCalendrierSemaine(Math.max(1, Math.min(53, Math.ceil(diffDays / 7))));
+                  }}
+                  className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 font-medium"
+                >
+                  Aujourd'hui
+                </button>
+                <span className="text-lg font-bold text-gray-700">
+                  Semaine {calendrierSemaine} - {WEEKS[calendrierSemaine - 1]?.dates || ''} au {WEEKS[calendrierSemaine - 1] ? (() => {
+                    const endDate = new Date(WEEKS[calendrierSemaine - 1].end);
+                    return `${endDate.getDate().toString().padStart(2, '0')}/${(endDate.getMonth() + 1).toString().padStart(2, '0')}`;
+                  })() : ''}
+                </span>
+              </div>
+              <button 
+                onClick={() => setCalendrierSemaine(s => Math.min(53, s + 1))}
+                className="px-4 py-2 bg-white border rounded-lg hover:bg-gray-100 font-medium"
+              >
+                Semaine suivante →
+              </button>
+            </div>
+            
+            {/* Calendrier grille */}
+            <div className="flex-1 overflow-auto p-4">
+              {(() => {
+                const week = WEEKS[calendrierSemaine - 1];
+                if (!week) return null;
+                
+                // Générer les 7 jours de la semaine
+                const jours = [];
+                for (let i = 0; i < 7; i++) {
+                  const jour = new Date(week.start);
+                  jour.setDate(jour.getDate() + i);
+                  jours.push(jour);
+                }
+                
+                const jourNoms = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+                
+                // Filtrer les tâches qui ont des dates dans cette semaine
+                const tachesSemaine = calendrierTaches.filter(t => {
+                  if (!t.dateDebut) return false;
+                  const debut = new Date(t.dateDebut);
+                  const fin = t.dateFin ? new Date(t.dateFin) : debut;
+                  const weekStart = new Date(week.start);
+                  const weekEnd = new Date(week.end);
+                  return debut <= weekEnd && fin >= weekStart;
+                });
+                
+                return (
+                  <div className="min-w-[800px]">
+                    {/* En-têtes jours */}
+                    <div className="grid grid-cols-7 gap-2 mb-2">
+                      {jours.map((jour, idx) => {
+                        const isToday = jour.toDateString() === new Date().toDateString();
+                        const isWeekend = idx >= 5;
+                        return (
+                          <div key={idx} className={`text-center p-2 rounded-lg ${isToday ? 'bg-purple-600 text-white' : isWeekend ? 'bg-gray-100' : 'bg-gray-50'}`}>
+                            <div className="text-xs font-medium">{jourNoms[idx]}</div>
+                            <div className="text-lg font-bold">{jour.getDate()}</div>
+                            <div className="text-xs opacity-70">{(jour.getMonth() + 1).toString().padStart(2, '0')}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Zone des tâches */}
+                    <div className="grid grid-cols-7 gap-2 min-h-[400px]">
+                      {jours.map((jour, jourIdx) => {
+                        const isWeekend = jourIdx >= 5;
+                        const jourStr = jour.toISOString().split('T')[0];
+                        
+                        // Tâches qui couvrent ce jour
+                        const tachesJour = tachesSemaine.filter(t => {
+                          const debut = new Date(t.dateDebut);
+                          const fin = t.dateFin ? new Date(t.dateFin) : debut;
+                          return jour >= new Date(debut.toISOString().split('T')[0]) && jour <= new Date(fin.toISOString().split('T')[0]);
+                        });
+                        
+                        // Calculer heures totales du jour
+                        const heuresTotales = tachesJour.reduce((sum, t) => {
+                          const debut = new Date(t.dateDebut);
+                          const fin = t.dateFin ? new Date(t.dateFin) : debut;
+                          const nbJours = Math.max(1, Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1);
+                          return sum + (t.dureeEstimee / nbJours);
+                        }, 0);
+                        
+                        return (
+                          <div key={jourIdx} className={`border rounded-lg p-2 ${isWeekend ? 'bg-gray-50' : 'bg-white'} min-h-[300px]`}>
+                            {/* Indicateur charge */}
+                            {heuresTotales > 0 && (
+                              <div className={`text-xs font-medium px-2 py-1 rounded mb-2 text-center ${
+                                heuresTotales > 8 ? 'bg-red-100 text-red-700' : 
+                                heuresTotales > 6 ? 'bg-orange-100 text-orange-700' : 
+                                'bg-green-100 text-green-700'
+                              }`}>
+                                {heuresTotales.toFixed(1)}h prévues
+                              </div>
+                            )}
+                            
+                            {/* Tâches */}
+                            <div className="space-y-2">
+                              {tachesJour.map(tache => {
+                                const projet = projets.find(p => p.id === tache.projetId);
+                                const statut = STATUTS.find(s => s.id === tache.status);
+                                const debut = new Date(tache.dateDebut);
+                                const fin = tache.dateFin ? new Date(tache.dateFin) : debut;
+                                const nbJours = Math.max(1, Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1);
+                                const heuresJour = (tache.dureeEstimee / nbJours).toFixed(1);
+                                
+                                return (
+                                  <div 
+                                    key={tache.id}
+                                    className="p-2 rounded-lg text-white text-xs cursor-pointer hover:opacity-90 transition-all shadow-sm"
+                                    style={{ backgroundColor: statut?.color || '#6B7280' }}
+                                    title={`${tache.name}\n${projet?.name || ''}\n${tache.dureeEstimee}h total`}
+                                  >
+                                    <div className="font-medium truncate">{tache.name}</div>
+                                    <div className="flex items-center justify-between mt-1 opacity-80">
+                                      <span>{heuresJour}h</span>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); generateICS(tache, calendrierCollab); }}
+                                        className="px-1.5 py-0.5 bg-white/20 rounded hover:bg-white/30 text-[10px]"
+                                        title="Ajouter à Outlook"
+                                      >
+                                        📤
+                                      </button>
+                                    </div>
+                                    {projet && <div className="truncate opacity-70 mt-1">{projet.name}</div>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Légende */}
+                    <div className="mt-4 p-3 bg-gray-50 rounded-lg flex items-center gap-6 flex-wrap">
+                      <span className="font-medium text-gray-700">Légende :</span>
+                      {STATUTS.map(statut => (
+                        <div key={statut.id} className="flex items-center gap-2">
+                          <div className="w-4 h-4 rounded" style={{ backgroundColor: statut.color }}></div>
+                          <span className="text-sm">{statut.icon} {statut.name}</span>
+                        </div>
+                      ))}
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-green-100"></div>
+                        <span className="text-sm">≤6h/jour</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-orange-100"></div>
+                        <span className="text-sm">6-8h/jour</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded bg-red-100"></div>
+                        <span className="text-sm">&gt;8h/jour</span>
+                      </div>
+                    </div>
+                    
+                    {/* Message si pas de tâches */}
+                    {tachesSemaine.length === 0 && (
+                      <div className="mt-8 text-center py-12 bg-gray-50 rounded-lg">
+                        <div className="text-4xl mb-3">📭</div>
+                        <p className="text-gray-500">Aucune tâche planifiée cette semaine</p>
+                        <p className="text-sm text-gray-400 mt-2">Les tâches avec des dates de début/fin apparaîtront ici</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
