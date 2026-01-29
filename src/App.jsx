@@ -724,18 +724,14 @@ export default function App() {
     
     setIsSaving(true);
     try {
-      const dateComiteIA = selectedProjet.dateComiteIA || new Date().toISOString().split('T')[0];
+      const datePresentation = selectedProjet.dateComiteIA || '';
       
-      // Récupérer les infos du projet
-      const axe = getAxeForChantier(selectedProjet.chantierId);
-      const chantier = getChantier(selectedProjet.chantierId);
-      const meneur = getCollab(selectedProjet.meneur);
-      const referentIA = getCollab(selectedProjet.referentComiteIA);
-      
-      // Récupérer les emails des membres du Comité IA
-      const membresComiteIAEmails = collaborateurs
-        .filter(c => c.estComiteStrategiqueIA && c.email)
-        .map(c => ({ email: c.email, name: c.name }));
+      // Récupérer l'équipe du projet
+      const equipeNoms = (selectedProjet.collaborateurs || [])
+        .map(id => getCollab(id))
+        .filter(Boolean)
+        .map(c => c.name)
+        .join(', ');
       
       // Envoyer le webhook à Make
       const webhookUrl = 'https://hook.eu2.make.com/0fbx8h5rp2tmxtl7aisxtujgfwc5we8e';
@@ -747,18 +743,8 @@ export default function App() {
           mode: 'no-cors',
           body: JSON.stringify({
             projet: selectedProjet.name,
-            objectif: selectedProjet.objectif || '',
-            axe: axe?.name || '',
-            chantier: chantier?.name || '',
-            meneur: meneur?.name || '',
-            meneurEmail: meneur?.email || '',
-            referentIA: referentIA?.name || '',
-            referentIAEmail: referentIA?.email || '',
-            dateComiteIA: dateComiteIA,
-            membresComiteIA: membresComiteIAEmails,
-            lienProjet: `https://sprint-board-simple.vercel.app/?projet=${selectedProjet.id}`,
-            status: selectedProjet.status,
-            avancement: selectedProjet.avancement || 0,
+            datePresentation: datePresentation,
+            equipe: equipeNoms,
           }),
         });
       } catch (webhookErr) {
