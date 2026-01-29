@@ -384,6 +384,8 @@ export default async function handler(req, res) {
             status: fromAirtableStatus(record.fields.Statut || record.fields.Status),
             commentaire: record.fields.Commentaire || '',
             order: record.fields.Order || 0,
+            dateDebut: record.fields['Date début'] || record.fields.DateDebut || null,
+            dateFin: record.fields['Date fin'] || record.fields.DateFin || null,
           };
         });
 
@@ -397,7 +399,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'POST') {
-        const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
+        const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
         
         console.log('POST tache - received body:', JSON.stringify(req.body));
         
@@ -440,6 +442,10 @@ export default async function handler(req, res) {
         if (dureeEstimee > 0) fields['Durée estimée'] = dureeEstimee;
         if (heuresReelles > 0) fields['Heures réelles'] = heuresReelles;
         
+        // Dates
+        if (dateDebut) fields['Date début'] = dateDebut;
+        if (dateFin) fields['Date fin'] = dateFin;
+        
         console.log('Creating tache with fields:', JSON.stringify(fields));
         console.log('Target table:', TABLES.taches);
         console.log('URL:', getAirtableUrl(TABLES.taches));
@@ -478,12 +484,14 @@ export default async function handler(req, res) {
             status: fromAirtableStatus(record.fields.Statut),
             commentaire: record.fields.Commentaire || '',
             order: record.fields.Order || 0,
+            dateDebut: record.fields['Date début'] || null,
+            dateFin: record.fields['Date fin'] || null,
           }
         });
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order } = req.body;
+        const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         // Extraire les IDs (peuvent être tableaux ou strings)
@@ -527,6 +535,10 @@ export default async function handler(req, res) {
         fields['Durée estimée'] = dureeEstimee || 0;
         fields['Heures réelles'] = heuresReelles || 0;
         
+        // Dates - permettre de les vider (null/undefined)
+        if (dateDebut !== undefined) fields['Date début'] = dateDebut || null;
+        if (dateFin !== undefined) fields['Date fin'] = dateFin || null;
+        
         console.log('PATCH tache with fields:', JSON.stringify(fields));
 
         const response = await fetch(getAirtableUrl(TABLES.taches), {
@@ -553,6 +565,8 @@ export default async function handler(req, res) {
             status: fromAirtableStatus(record.fields.Statut),
             commentaire: record.fields.Commentaire || '',
             order: record.fields.Order || 0,
+            dateDebut: record.fields['Date début'] || null,
+            dateFin: record.fields['Date fin'] || null,
           }
         });
       }
