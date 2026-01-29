@@ -40,16 +40,16 @@ const STATUTS = [
 const SPRINTS = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Backlog'];
 
 // Parser les noms de sprints personnalisés depuis le champ SprintsNoms
-// Format attendu : "Sprint 1: Nom du sprint\nSprint 2: Autre nom"
+// Format attendu : "Sprint 1: Nom du sprint\nSprint 2: Autre nom" ou "Sprint 5:" pour sprint sans nom
 const parseSprintsNoms = (sprintsNomsText) => {
   if (!sprintsNomsText) return {};
   const lignes = sprintsNomsText.split('\n');
   const noms = {};
   lignes.forEach(ligne => {
-    const match = ligne.match(/^(Sprint\s*\d+)\s*:\s*(.+)$/i);
+    const match = ligne.match(/^(Sprint\s*\d+)\s*:\s*(.*)$/i);
     if (match) {
       const sprintKey = match[1].replace(/\s+/g, ' ').trim(); // Normalise "Sprint 1"
-      noms[sprintKey] = match[2].trim();
+      noms[sprintKey] = match[2].trim(); // Peut être vide
     }
   });
   return noms;
@@ -59,10 +59,15 @@ const parseSprintsNoms = (sprintsNomsText) => {
 const getSprintsForProjet = (projet) => {
   if (!projet?.sprintsNoms) return SPRINTS;
   
-  const nomsPerso = parseSprintsNoms(projet.sprintsNoms);
-  const sprintNumbers = Object.keys(nomsPerso)
-    .map(k => parseInt(k.match(/\d+/)?.[0] || 0))
-    .filter(n => n > 0);
+  // Parser pour trouver tous les sprints mentionnés
+  const lignes = projet.sprintsNoms.split('\n');
+  const sprintNumbers = [];
+  lignes.forEach(ligne => {
+    const match = ligne.match(/^Sprint\s*(\d+)/i);
+    if (match) {
+      sprintNumbers.push(parseInt(match[1]));
+    }
+  });
   
   // Si des sprints personnalisés existent, créer la liste jusqu'au max
   if (sprintNumbers.length > 0) {
@@ -158,6 +163,10 @@ export default function App() {
   // Drag and Drop state
   const [draggedTache, setDraggedTache] = useState(null);
   const [dragOverSprint, setDragOverSprint] = useState(null);
+  
+  // État pour l'édition des noms de sprints
+  const [showSprintNomModal, setShowSprintNomModal] = useState(false);
+  const [editingSprintNom, setEditingSprintNom] = useState({ sprint: '', nom: '' });
   
   // Documents state
   const [showDocumentModal, setShowDocumentModal] = useState(false);
@@ -583,6 +592,122 @@ export default function App() {
     return { total: taches.length, done, heuresEstimees, heuresReelles, progress: taches.length ? Math.round((done / taches.length) * 100) : 0 };
   };
 
+  // Ouvrir le modal pour éditer le nom d'un sprint
+  const openEditSprintNom = (sprint) => {
+    const nomsPerso = parseSprintsNoms(selectedProjet?.sprintsNoms || '');
+    const nomActuel = nomsPerso[sprint] || '';
+    setEditingSprintNom({ sprint, nom: nomActuel });
+    setShowSprintNomModal(true);
+  };
+
+  // Sauvegarder le nom du sprint
+  const saveSprintNom = async () => {
+    if (!selectedProjet) return;
+    
+    setIsSaving(true);
+    try {
+      // Parser les noms existants
+      const nomsPerso = parseSprintsNoms(selectedProjet.sprintsNoms || '');
+      
+      // Mettre à jour le nom du sprint
+      if (editingSprintNom.nom.trim()) {
+        nomsPerso[editingSprintNom.sprint] = editingSprintNom.nom.trim();
+      } else {
+        delete nomsPerso[editingSprintNom.sprint]; // Supprimer si vide
+      }
+      
+      // Reconstruire le texte
+      const sprintsNomsText = Object.entries(nomsPerso)
+        .sort((a, b) => {
+          const numA = parseInt(a[0].match(/\d+/)?.[0] || 0);
+          const numB = parseInt(b[0].match(/\d+/)?.[0] || 0);
+          return numA - numB;
+        })
+        .map(([sprint, nom]) => `${sprint}: ${nom}`)
+        .join('\n');
+      
+      // Sauvegarder dans Airtable
+      const response = await fetch(`${API_URL}?table=items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedProjet.id,
+          sprintsNoms: sprintsNomsText
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Erreur sauvegarde');
+      
+      // Mettre à jour localement
+      const updatedProjet = { ...selectedProjet, sprintsNoms: sprintsNomsText };
+      setSelectedProjet(updatedProjet);
+      setProjets(projets.map(p => p.id === selectedProjet.id ? updatedProjet : p));
+      
+      setShowSprintNomModal(false);
+      setEditingSprintNom({ sprint: '', nom: '' });
+    } catch (err) {
+      console.error('Erreur sauvegarde nom sprint:', err);
+      alert('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Ajouter un nouveau sprint au projet
+  const addNewSprint = async () => {
+    if (!selectedProjet) return;
+    
+    // Trouver le prochain numéro de sprint
+    const sprintsActuels = getSprintsForProjet(selectedProjet).filter(s => s !== 'Backlog');
+    const maxNum = sprintsActuels.reduce((max, s) => {
+      const num = parseInt(s.match(/\d+/)?.[0] || 0);
+      return num > max ? num : max;
+    }, 0);
+    const nouveauSprint = `Sprint ${maxNum + 1}`;
+    
+    // Parser les noms existants et ajouter le nouveau
+    const nomsPerso = parseSprintsNoms(selectedProjet.sprintsNoms || '');
+    nomsPerso[nouveauSprint] = ''; // Nom vide par défaut
+    
+    // Reconstruire le texte (garder même les sprints sans nom pour qu'ils existent)
+    const sprintsNomsText = Object.entries(nomsPerso)
+      .sort((a, b) => {
+        const numA = parseInt(a[0].match(/\d+/)?.[0] || 0);
+        const numB = parseInt(b[0].match(/\d+/)?.[0] || 0);
+        return numA - numB;
+      })
+      .map(([sprint, nom]) => nom ? `${sprint}: ${nom}` : `${sprint}:`)
+      .join('\n');
+    
+    setIsSaving(true);
+    try {
+      const response = await fetch(`${API_URL}?table=items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedProjet.id,
+          sprintsNoms: sprintsNomsText
+        }),
+      });
+      
+      if (!response.ok) throw new Error('Erreur sauvegarde');
+      
+      // Mettre à jour localement
+      const updatedProjet = { ...selectedProjet, sprintsNoms: sprintsNomsText };
+      setSelectedProjet(updatedProjet);
+      setProjets(projets.map(p => p.id === selectedProjet.id ? updatedProjet : p));
+      
+      // Ouvrir le modal pour nommer le nouveau sprint
+      setEditingSprintNom({ sprint: nouveauSprint, nom: '' });
+      setShowSprintNomModal(true);
+    } catch (err) {
+      console.error('Erreur ajout sprint:', err);
+      alert('Erreur lors de l\'ajout du sprint');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-700 to-blue-600 flex items-center justify-center p-4">
@@ -773,6 +898,15 @@ export default function App() {
                         <div className="bg-gray-800 text-white p-4 flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <span className="text-lg font-bold">{sprintDisplayName}</span>
+                            {sprint !== 'Backlog' && (
+                              <button 
+                                onClick={() => openEditSprintNom(sprint)}
+                                className="text-white/60 hover:text-white hover:bg-white/20 p-1 rounded transition-all"
+                                title="Renommer ce sprint"
+                              >
+                                ✏️
+                              </button>
+                            )}
                             <span className="bg-white/20 px-2 py-0.5 rounded text-sm">{sprintStats.done}/{sprintStats.total}</span>
                           </div>
                           <div className="flex items-center gap-4 text-sm">
@@ -854,6 +988,15 @@ export default function App() {
                       </div>
                     );
                   })}
+                  
+                  {/* Bouton pour ajouter un sprint */}
+                  <button
+                    onClick={addNewSprint}
+                    className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-purple-500 hover:text-purple-600 hover:bg-purple-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <span className="text-xl">➕</span>
+                    <span>Ajouter un sprint</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -2157,6 +2300,48 @@ export default function App() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal d'édition du nom de sprint */}
+      {showSprintNomModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md">
+            <div className="p-6 border-b">
+              <h3 className="text-xl font-bold text-gray-800">✏️ Renommer {editingSprintNom.sprint}</h3>
+            </div>
+            <div className="p-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Nom du sprint (optionnel)
+              </label>
+              <input
+                type="text"
+                value={editingSprintNom.nom}
+                onChange={(e) => setEditingSprintNom({ ...editingSprintNom, nom: e.target.value })}
+                placeholder="Ex: Refondre le back office"
+                className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                autoFocus
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                Laissez vide pour afficher uniquement "{editingSprintNom.sprint}"
+              </p>
+            </div>
+            <div className="p-6 border-t bg-gray-50 flex justify-end gap-3 rounded-b-xl">
+              <button
+                onClick={() => { setShowSprintNomModal(false); setEditingSprintNom({ sprint: '', nom: '' }); }}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveSprintNom}
+                disabled={isSaving}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {isSaving ? '⏳ Sauvegarde...' : '✅ Enregistrer'}
+              </button>
             </div>
           </div>
         </div>
