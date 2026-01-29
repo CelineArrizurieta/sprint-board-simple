@@ -96,6 +96,16 @@ const getSprintDisplayName = (sprint, projet) => {
   return sprint;
 };
 
+// Formater une date pour l'input type="date" (YYYY-MM-DD)
+const formatDateForInput = (dateStr) => {
+  if (!dateStr) return '';
+  // Si c'est déjà au bon format (YYYY-MM-DD), retourner tel quel
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  // Sinon extraire la partie date (pour les formats ISO avec timestamp)
+  const match = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : '';
+};
+
 // Pôles pour la vue Équipage (sans icônes)
 const POLES = {
   'Présidence': { color: '#7C3AED', bgLight: '#F3E8FF' },
@@ -1233,14 +1243,14 @@ export default function App() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">📅 Date début</label>
-                    <input type="date" value={editingTache?.dateDebut || newTache.dateDebut || ''}
+                    <input type="date" value={formatDateForInput(editingTache?.dateDebut) || newTache.dateDebut || ''}
                       onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dateDebut: e.target.value }) : setNewTache({ ...newTache, dateDebut: e.target.value })}
                       className="w-full p-3 border rounded-lg" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">📅 Date fin</label>
-                    <input type="date" value={editingTache?.dateFin || newTache.dateFin || ''}
-                      min={editingTache?.dateDebut || newTache.dateDebut || ''}
+                    <input type="date" value={formatDateForInput(editingTache?.dateFin) || newTache.dateFin || ''}
+                      min={formatDateForInput(editingTache?.dateDebut) || newTache.dateDebut || ''}
                       onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dateFin: e.target.value }) : setNewTache({ ...newTache, dateFin: e.target.value })}
                       className="w-full p-3 border rounded-lg" />
                   </div>
