@@ -39,6 +39,58 @@ const STATUTS = [
 
 const SPRINTS = ['Sprint 1', 'Sprint 2', 'Sprint 3', 'Sprint 4', 'Backlog'];
 
+// Parser les noms de sprints personnalisés depuis le champ SprintsNoms
+// Format attendu : "Sprint 1: Nom du sprint\nSprint 2: Autre nom"
+const parseSprintsNoms = (sprintsNomsText) => {
+  if (!sprintsNomsText) return {};
+  const lignes = sprintsNomsText.split('\n');
+  const noms = {};
+  lignes.forEach(ligne => {
+    const match = ligne.match(/^(Sprint\s*\d+)\s*:\s*(.+)$/i);
+    if (match) {
+      const sprintKey = match[1].replace(/\s+/g, ' ').trim(); // Normalise "Sprint 1"
+      noms[sprintKey] = match[2].trim();
+    }
+  });
+  return noms;
+};
+
+// Obtenir la liste des sprints pour un projet (avec sprints personnalisés si définis)
+const getSprintsForProjet = (projet) => {
+  if (!projet?.sprintsNoms) return SPRINTS;
+  
+  const nomsPerso = parseSprintsNoms(projet.sprintsNoms);
+  const sprintNumbers = Object.keys(nomsPerso)
+    .map(k => parseInt(k.match(/\d+/)?.[0] || 0))
+    .filter(n => n > 0);
+  
+  // Si des sprints personnalisés existent, créer la liste jusqu'au max
+  if (sprintNumbers.length > 0) {
+    const maxSprint = Math.max(...sprintNumbers, 4); // Au moins 4 sprints
+    const sprints = [];
+    for (let i = 1; i <= maxSprint; i++) {
+      sprints.push(`Sprint ${i}`);
+    }
+    sprints.push('Backlog');
+    return sprints;
+  }
+  
+  return SPRINTS;
+};
+
+// Obtenir le nom d'affichage d'un sprint (personnalisé ou par défaut)
+const getSprintDisplayName = (sprint, projet) => {
+  if (!projet?.sprintsNoms || sprint === 'Backlog') return sprint;
+  
+  const nomsPerso = parseSprintsNoms(projet.sprintsNoms);
+  const nomPerso = nomsPerso[sprint];
+  
+  if (nomPerso) {
+    return `${sprint} : ${nomPerso}`;
+  }
+  return sprint;
+};
+
 // Pôles pour la vue Équipage (sans icônes)
 const POLES = {
   'Présidence': { color: '#7C3AED', bgLight: '#F3E8FF' },
@@ -710,16 +762,17 @@ export default function App() {
                 <div className="text-center py-12"><div className="text-4xl mb-4">⏳</div><p className="text-gray-600">Chargement...</p></div>
               ) : (
                 <div className="space-y-4">
-                  {SPRINTS.map(sprint => {
+                  {getSprintsForProjet(selectedProjet).map(sprint => {
                     const sprintTaches = getTachesBySprint(sprint);
                     const sprintStats = getSprintStats(sprint);
                     const isDragOver = dragOverSprint === sprint;
+                    const sprintDisplayName = getSprintDisplayName(sprint, selectedProjet);
                     return (
                       <div key={sprint} className={`bg-white rounded-lg shadow overflow-hidden transition-all ${isDragOver ? 'ring-2 ring-purple-500 ring-offset-2' : ''}`}
                         onDragOver={(e) => handleDragOver(e, sprint)} onDragLeave={() => setDragOverSprint(null)} onDrop={(e) => handleDrop(e, sprint)}>
                         <div className="bg-gray-800 text-white p-4 flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <span className="text-lg font-bold">{sprint}</span>
+                            <span className="text-lg font-bold">{sprintDisplayName}</span>
                             <span className="bg-white/20 px-2 py-0.5 rounded text-sm">{sprintStats.done}/{sprintStats.total}</span>
                           </div>
                           <div className="flex items-center gap-4 text-sm">
@@ -971,7 +1024,7 @@ export default function App() {
                     <select value={editingTache?.sprint || newTache.sprint}
                       onChange={(e) => editingTache ? setEditingTache({ ...editingTache, sprint: e.target.value }) : setNewTache({ ...newTache, sprint: e.target.value })}
                       className="w-full p-3 border rounded-lg">
-                      {SPRINTS.map(s => <option key={s} value={s}>{s}</option>)}
+                      {getSprintsForProjet(selectedProjet).map(s => <option key={s} value={s}>{getSprintDisplayName(s, selectedProjet)}</option>)}
                     </select>
                   </div>
                   <div>
