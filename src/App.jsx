@@ -866,19 +866,8 @@ export default function App() {
                 </div>
               )}
               <div className="bg-white rounded-lg shadow p-4">
-                <h3 className="font-semibold text-gray-800 mb-3">👥 Équipe du projet</h3>
+                <h3 className="font-semibold text-gray-800 mb-3">👥 Gouvernance</h3>
                 <div className="space-y-3">
-                  {meneur && (
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg">🏅</span>
-                      <span className="text-xs text-gray-500 w-20">Meneur</span>
-                      <div className="flex items-center gap-2">
-                        {meneur.photo ? <img src={meneur.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
-                          : <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: meneur.color }}>{meneur.name.charAt(0)}</div>}
-                        <div><div className="font-medium text-sm">{meneur.name}</div><div className="text-xs text-gray-500">{meneur.role}</div></div>
-                      </div>
-                    </div>
-                  )}
                   {referentIA && (
                     <div className="flex items-center gap-3">
                       <span className="text-lg">🎯</span>
@@ -1200,21 +1189,8 @@ export default function App() {
                   </div>
                 </div>
                 <div className="border-t pt-4">
-                  <h4 className="font-semibold text-gray-800 mb-3">👥 Équipe</h4>
+                  <h4 className="font-semibold text-gray-800 mb-3">👥 Gouvernance</h4>
                   <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">🏅 Meneur</label>
-                      <select value={editingProjet?.meneur || newProjet.meneur}
-                        onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, meneur: e.target.value }) : setNewProjet({ ...newProjet, meneur: e.target.value })}
-                        className="w-full p-2 border rounded-lg text-sm">
-                        <option value="">—</option>
-                        {Object.entries(collabsParService).map(([service, collabs]) => (
-                          <optgroup key={service} label={service}>
-                            {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
-                          </optgroup>
-                        ))}
-                      </select>
-                    </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">🎯 Référent Comité IA</label>
                       <select value={editingProjet?.referentComiteIA || newProjet.referentComiteIA}
@@ -1301,10 +1277,9 @@ export default function App() {
                     {(() => {
                       // Séparer l'équipe du projet des autres collaborateurs
                       const equipeProjetIds = selectedProjet?.collaborateurs || [];
-                      const meneurId = selectedProjet?.meneur;
                       const refIAId = selectedProjet?.referentComiteIA;
                       const refConfId = selectedProjet?.referentConformite;
-                      const allEquipeIds = [...new Set([meneurId, refIAId, refConfId, ...equipeProjetIds].filter(Boolean))];
+                      const allEquipeIds = [...new Set([refIAId, refConfId, ...equipeProjetIds].filter(Boolean))];
                       
                       const equipeProjet = allEquipeIds.map(id => getCollab(id)).filter(Boolean);
                       const autresCollabs = collaborateurs.filter(c => !allEquipeIds.includes(c.id) && !allEquipeIds.includes(c.recordId));
@@ -1326,7 +1301,7 @@ export default function App() {
                             <optgroup label="👥 Équipe du projet">
                               {equipeProjet.map(c => (
                                 <option key={c.recordId || c.id} value={c.recordId || c.id}>
-                                  {c.name}{c.id === meneurId || c.recordId === meneurId ? ' 🏅' : ''}{c.id === refIAId || c.recordId === refIAId ? ' 🎯' : ''}{c.id === refConfId || c.recordId === refConfId ? ' 🔒' : ''}
+                                  {c.name}{c.id === refIAId || c.recordId === refIAId ? ' 🎯' : ''}{c.id === refConfId || c.recordId === refConfId ? ' 🔒' : ''}
                                 </option>
                               ))}
                             </optgroup>
@@ -1977,7 +1952,6 @@ export default function App() {
                                 <p className="text-xs text-purple-600 mt-1">{axe?.icon} {chantier?.name}</p>
                                 <div className="flex items-center gap-2 mt-2">
                                   <span className="text-xs text-gray-500">S{projet.weekStart} → S{projet.weekEnd}</span>
-                                  {projet.meneur === collab.id && <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">🏅 Meneur</span>}
                                   {projet.referentComiteIA === collab.id && <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">🎯 Réf. IA</span>}
                                   {projet.referentConformite === collab.id && <span className="text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">🔒 Réf. Conf.</span>}
                                 </div>
@@ -2085,21 +2059,8 @@ export default function App() {
                 </div>
               </div>
               <div className="border-t pt-4">
-                <h4 className="font-semibold text-gray-800 mb-3">👥 Équipe</h4>
+                <h4 className="font-semibold text-gray-800 mb-3">👥 Gouvernance</h4>
                 <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">🏅 Meneur</label>
-                    <select value={editingProjet?.meneur || newProjet.meneur}
-                      onChange={(e) => editingProjet ? setEditingProjet({ ...editingProjet, meneur: e.target.value }) : setNewProjet({ ...newProjet, meneur: e.target.value })}
-                      className="w-full p-2 border rounded-lg text-sm">
-                      <option value="">—</option>
-                      {Object.entries(collabsParService).map(([service, collabs]) => (
-                        <optgroup key={service} label={service}>
-                          {collabs.map(c => <option key={c.id} value={c.id}>{c.name} - {c.role}</option>)}
-                        </optgroup>
-                      ))}
-                    </select>
-                  </div>
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">🎯 Référent Comité IA</label>
                     <select value={editingProjet?.referentComiteIA || newProjet.referentComiteIA}
