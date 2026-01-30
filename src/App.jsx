@@ -445,16 +445,50 @@ export default function App() {
     setCalendrierTaches([]);
     
     try {
-      // Charger toutes les tâches
-      const response = await fetch(`${API_URL}?table=taches`);
-      const data = await response.json();
+      // Charger toutes les tâches et les participants
+      const [tachesRes, participantsRes] = await Promise.all([
+        fetch(`${API_URL}?table=taches`),
+        fetch(`${API_URL}?table=participants`),
+      ]);
+      const tachesData = await tachesRes.json();
+      const participantsData = await participantsRes.json();
       
-      // Filtrer les tâches assignées à ce collaborateur
-      const collabTaches = (data.taches || []).filter(t => 
-        t.assigne === collab.id || t.assigne === collab.recordId
+      const allTaches = tachesData.taches || [];
+      const allParticipants = participantsData.participants || [];
+      
+      // Trouver les tâches où ce collaborateur est capitaine
+      const tachesCapitaine = allTaches.filter(t => 
+        t.capitaine === collab.id || t.capitaine === collab.recordId
       );
       
-      setCalendrierTaches(collabTaches);
+      // Trouver les participations de ce collaborateur
+      const mesParticipations = allParticipants.filter(p =>
+        p.collaborateurId === collab.id || p.collaborateurId === collab.recordId
+      );
+      
+      // Pour chaque participation, créer une "pseudo-tâche" avec les dates du participant
+      const tachesParticipant = mesParticipations.map(p => {
+        const tacheOriginale = allTaches.find(t => t.id === p.tacheId);
+        if (!tacheOriginale) return null;
+        return {
+          ...tacheOriginale,
+          // Utiliser les dates et heures du participant
+          dateDebut: p.dateDebut || tacheOriginale.dateDebut,
+          dateFin: p.dateFin || tacheOriginale.dateFin,
+          dureeEstimee: p.heures || tacheOriginale.dureeEstimee,
+          // Marquer comme participation
+          isParticipation: true,
+          participantHeures: p.heures,
+        };
+      }).filter(Boolean);
+      
+      // Combiner et dédupliquer (si capitaine ET participant, garder capitaine)
+      const tachesCapitaineIds = new Set(tachesCapitaine.map(t => t.id));
+      const tachesParticipantUniques = tachesParticipant.filter(t => !tachesCapitaineIds.has(t.id));
+      
+      const toutesLesTaches = [...tachesCapitaine, ...tachesParticipantUniques];
+      
+      setCalendrierTaches(toutesLesTaches);
     } catch (err) {
       console.error('Erreur chargement tâches calendrier:', err);
     }
