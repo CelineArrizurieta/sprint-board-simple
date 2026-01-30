@@ -486,7 +486,7 @@ export default async function handler(req, res) {
             name: record.fields['Nom de la tâche'] || '',
             projetId: extractId(record.fields.Projet),
             sprint: record.fields['Sprint/Phase'] || 'Backlog',
-            assigne: extractId(record.fields['Assigné']),
+            capitaine: extractId(record.fields['Capitaine']),
             dureeEstimee: record.fields['Durée estimée'] || 0,
             heuresReelles: record.fields['Heures réelles'] || 0,
             status: fromAirtableStatus(record.fields.Statut),
@@ -728,6 +728,10 @@ export default async function handler(req, res) {
       if (req.method === 'POST') {
         const { tacheId, collaborateurId, heures, dateDebut, dateFin } = req.body;
         
+        console.log('POST participant - body:', JSON.stringify(req.body));
+        console.log('POST participant - tacheId:', tacheId, 'isRecordId:', isRecordId(tacheId));
+        console.log('POST participant - collaborateurId:', collaborateurId, 'isRecordId:', isRecordId(collaborateurId));
+        
         if (!tacheId || !collaborateurId) {
           return res.status(400).json({ error: 'Tâche et collaborateur requis' });
         }
@@ -739,16 +743,22 @@ export default async function handler(req, res) {
         // Tache - Linked Record
         if (isRecordId(tacheId)) {
           fields['Tache'] = [tacheId];
+        } else {
+          console.log('WARNING: tacheId is not a valid recordId:', tacheId);
         }
         
         // Collaborateur - Linked Record
         if (isRecordId(collaborateurId)) {
           fields['Collaborateur'] = [collaborateurId];
+        } else {
+          console.log('WARNING: collaborateurId is not a valid recordId:', collaborateurId);
         }
         
         // Dates
         if (dateDebut) fields['DateDebut'] = dateDebut;
         if (dateFin) fields['DateFin'] = dateFin;
+        
+        console.log('POST participant - fields to send:', JSON.stringify(fields));
         
         const response = await fetch(getAirtableUrl(TABLES.participants), {
           method: 'POST',
@@ -757,6 +767,7 @@ export default async function handler(req, res) {
         });
 
         const data = await response.json();
+        console.log('POST participant - Airtable response:', JSON.stringify(data));
         
         if (data.error) {
           return res.status(400).json({ error: data.error.message || JSON.stringify(data.error) });
