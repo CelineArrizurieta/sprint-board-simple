@@ -10,6 +10,7 @@ const TABLES = {
   chantiers: 'tblIkKyzPB7u8NWzI',
   collaborateurs: 'tblVtL5KEJQmxBra3',
   taches: 'tblUyYKjBoTIz5YuK',
+  participants: 'tblZvRwtMw0jziUOP',
 };
 
 const getAirtableUrl = (table) => `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${table}`;
@@ -374,10 +375,10 @@ export default async function handler(req, res) {
             projetId = projetId[0]; // Prendre le premier si c'est un tableau
           }
           
-          // Gérer Assigné qui peut être un Linked Record (tableau) ou texte
-          let assigne = record.fields['Assigné'] || record.fields.Assigne || '';
-          if (Array.isArray(assigne) && assigne.length > 0) {
-            assigne = assigne[0];
+          // Gérer Capitaine qui peut être un Linked Record (tableau) ou texte
+          let capitaine = record.fields['Capitaine'] || record.fields.Capitaine || '';
+          if (Array.isArray(capitaine) && capitaine.length > 0) {
+            capitaine = capitaine[0];
           }
           
           return {
@@ -385,7 +386,7 @@ export default async function handler(req, res) {
             name: record.fields['Nom de la tâche'] || record.fields.Name || '',
             projetId: projetId,
             sprint: record.fields['Sprint/Phase'] || record.fields.Sprint || 'Backlog',
-            assigne: assigne,
+            capitaine: capitaine,
             dureeEstimee: record.fields['Durée estimée'] || record.fields.DureeEstimee || 0,
             heuresReelles: record.fields['Heures réelles'] || record.fields.HeuresReelles || 0,
             status: fromAirtableStatus(record.fields.Statut || record.fields.Status),
@@ -406,7 +407,7 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'POST') {
-        const { name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
+        const { name, projetId, sprint, capitaine, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
         
         console.log('POST tache - received body:', JSON.stringify(req.body));
         
@@ -416,7 +417,7 @@ export default async function handler(req, res) {
         
         // Extraire les IDs (peuvent être tableaux ou strings)
         const projetIdStr = extractId(projetId);
-        const assigneStr = extractId(assigne);
+        const capitaineStr = extractId(capitaine);
         
         // Construire les champs - Projet peut être un Linked Record ou un texte
         const fields = {
@@ -436,12 +437,12 @@ export default async function handler(req, res) {
           }
         }
         
-        // Assigné - pareil, peut être un Linked Record
-        if (assigneStr) {
-          if (isRecordId(assigneStr)) {
-            fields['Assigné'] = [assigneStr];
+        // Capitaine - Linked Record
+        if (capitaineStr) {
+          if (isRecordId(capitaineStr)) {
+            fields['Capitaine'] = [capitaineStr];
           } else {
-            fields['Assigné'] = assigneStr;
+            fields['Capitaine'] = capitaineStr;
           }
         }
         
@@ -498,15 +499,15 @@ export default async function handler(req, res) {
       }
 
       if (req.method === 'PUT' || req.method === 'PATCH') {
-        const { id, name, projetId, sprint, assigne, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
+        const { id, name, projetId, sprint, capitaine, dureeEstimee, heuresReelles, status, commentaire, order, dateDebut, dateFin } = req.body;
         if (!id) return res.status(400).json({ error: 'ID requis' });
 
         // Extraire les IDs (peuvent être tableaux ou strings)
         const projetIdStr = extractId(projetId);
-        const assigneStr = extractId(assigne);
+        const capitaineStr = extractId(capitaine);
         
         console.log('PUT/PATCH tache - projetId:', projetId, '-> extracted:', projetIdStr);
-        console.log('PUT/PATCH tache - assigne:', assigne, '-> extracted:', assigneStr);
+        console.log('PUT/PATCH tache - capitaine:', capitaine, '-> extracted:', capitaineStr);
 
         // Construire les champs
         const fields = {
@@ -526,16 +527,15 @@ export default async function handler(req, res) {
           }
         }
         
-        // Assigné - pareil, peut être un Linked Record
-        if (assigneStr) {
-          if (isRecordId(assigneStr)) {
-            fields['Assigné'] = [assigneStr];
+        // Capitaine - Linked Record
+        if (capitaineStr) {
+          if (isRecordId(capitaineStr)) {
+            fields['Capitaine'] = [capitaineStr];
           } else {
-            fields['Assigné'] = assigneStr;
+            fields['Capitaine'] = capitaineStr;
           }
-        } else {
-          // Ne pas envoyer de champ vide pour éviter les erreurs Airtable avec Linked Records
-          // fields['Assigné'] = ''; // Commenté - on ne touche pas à l'assigné si non fourni
+        } else if (capitaine === '' || capitaine === null) {
+          fields['Capitaine'] = [];
         }
         
         // Durées
@@ -566,7 +566,7 @@ export default async function handler(req, res) {
             name: record.fields['Nom de la tâche'] || '',
             projetId: extractId(record.fields.Projet),
             sprint: record.fields['Sprint/Phase'] || 'Backlog',
-            assigne: extractId(record.fields['Assigné']),
+            capitaine: extractId(record.fields['Capitaine']),
             dureeEstimee: record.fields['Durée estimée'] || 0,
             heuresReelles: record.fields['Heures réelles'] || 0,
             status: fromAirtableStatus(record.fields.Statut),
@@ -679,6 +679,149 @@ export default async function handler(req, res) {
 
         collaborateurs.sort((a, b) => a.order - b.order);
         return res.status(200).json({ collaborateurs });
+      }
+    }
+
+    // ========== PARTICIPANTS ==========
+    if (tableType === 'participants') {
+      if (req.method === 'GET') {
+        const { tacheId } = req.query;
+        const records = await fetchAllRecords(TABLES.participants, headers);
+        
+        let participants = records.map(record => {
+          // Extraire l'ID de la tâche (Linked Record)
+          let tacheIdVal = '';
+          const tacheField = record.fields.Tache;
+          if (Array.isArray(tacheField) && tacheField.length > 0) {
+            tacheIdVal = tacheField[0];
+          } else if (typeof tacheField === 'string') {
+            tacheIdVal = tacheField;
+          }
+          
+          // Extraire l'ID du collaborateur (Linked Record)
+          let collaborateurId = '';
+          const collabField = record.fields.Collaborateur;
+          if (Array.isArray(collabField) && collabField.length > 0) {
+            collaborateurId = collabField[0];
+          } else if (typeof collabField === 'string') {
+            collaborateurId = collabField;
+          }
+          
+          return {
+            id: record.id,
+            tacheId: tacheIdVal,
+            collaborateurId: collaborateurId,
+            heures: record.fields.Heures || 0,
+            dateDebut: record.fields.DateDebut || null,
+            dateFin: record.fields.DateFin || null,
+          };
+        });
+
+        // Filtrer par tâche si spécifié
+        if (tacheId) {
+          participants = participants.filter(p => p.tacheId === tacheId);
+        }
+
+        return res.status(200).json({ participants });
+      }
+
+      if (req.method === 'POST') {
+        const { tacheId, collaborateurId, heures, dateDebut, dateFin } = req.body;
+        
+        if (!tacheId || !collaborateurId) {
+          return res.status(400).json({ error: 'Tâche et collaborateur requis' });
+        }
+        
+        const fields = {
+          'Heures': heures || 0,
+        };
+        
+        // Tache - Linked Record
+        if (isRecordId(tacheId)) {
+          fields['Tache'] = [tacheId];
+        }
+        
+        // Collaborateur - Linked Record
+        if (isRecordId(collaborateurId)) {
+          fields['Collaborateur'] = [collaborateurId];
+        }
+        
+        // Dates
+        if (dateDebut) fields['DateDebut'] = dateDebut;
+        if (dateFin) fields['DateFin'] = dateFin;
+        
+        const response = await fetch(getAirtableUrl(TABLES.participants), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ records: [{ fields }] }),
+        });
+
+        const data = await response.json();
+        
+        if (data.error) {
+          return res.status(400).json({ error: data.error.message || JSON.stringify(data.error) });
+        }
+
+        const record = data.records[0];
+        return res.status(201).json({
+          participant: {
+            id: record.id,
+            tacheId: tacheId,
+            collaborateurId: collaborateurId,
+            heures: heures || 0,
+            dateDebut: dateDebut || null,
+            dateFin: dateFin || null,
+          }
+        });
+      }
+
+      if (req.method === 'PUT' || req.method === 'PATCH') {
+        const { id, heures, dateDebut, dateFin } = req.body;
+        
+        if (!id) {
+          return res.status(400).json({ error: 'ID requis' });
+        }
+        
+        const fields = {
+          'Heures': heures || 0,
+        };
+        
+        if (dateDebut !== undefined) fields['DateDebut'] = dateDebut || null;
+        if (dateFin !== undefined) fields['DateFin'] = dateFin || null;
+
+        const response = await fetch(getAirtableUrl(TABLES.participants), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ records: [{ id, fields }] }),
+        });
+
+        const data = await response.json();
+        
+        if (data.error) {
+          return res.status(400).json({ error: data.error.message || JSON.stringify(data.error) });
+        }
+
+        return res.status(200).json({ success: true });
+      }
+
+      if (req.method === 'DELETE') {
+        const { id } = req.query;
+        
+        if (!id) {
+          return res.status(400).json({ error: 'ID requis' });
+        }
+
+        const response = await fetch(`${getAirtableUrl(TABLES.participants)}/${id}`, {
+          method: 'DELETE',
+          headers,
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          return res.status(400).json({ error: data.error?.message || 'Erreur suppression' });
+        }
+
+        return res.status(200).json({ success: true });
       }
     }
 
