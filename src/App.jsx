@@ -162,13 +162,18 @@ export default function App() {
     objectif: '', referentComiteIA: '', referentConformite: '', meneur: ''
   });
   const [newTache, setNewTache] = useState({
-    name: '', projetId: '', sprint: 'Sprint 1', assigne: '',
+    name: '', projetId: '', sprint: 'Sprint 1', capitaine: '',
     dureeEstimee: 0, heuresReelles: 0, status: 'todo', commentaire: '',
     dateDebut: '', dateFin: ''
   });
   const [filtreAxe, setFiltreAxe] = useState('');
   const [filtreChantier, setFiltreChantier] = useState('');
   const [filtreStatut, setFiltreStatut] = useState('');
+  
+  // Participants state
+  const [participants, setParticipants] = useState([]);
+  const [tacheParticipants, setTacheParticipants] = useState([]);
+  const [newParticipant, setNewParticipant] = useState({ collaborateurId: '', heures: 0, dateDebut: '', dateFin: '' });
   
   // Drag and Drop state
   const [draggedTache, setDraggedTache] = useState(null);
@@ -246,11 +251,17 @@ export default function App() {
   const fetchTachesForProjet = useCallback(async (projetId) => {
     setLoadingTaches(true);
     try {
-      const res = await fetch(`${API_URL}?table=taches&projetId=${projetId}`);
-      const data = await res.json();
-      setProjetTaches(data.taches || []);
+      const [tachesRes, participantsRes] = await Promise.all([
+        fetch(`${API_URL}?table=taches&projetId=${projetId}`),
+        fetch(`${API_URL}?table=participants`),
+      ]);
+      const tachesData = await tachesRes.json();
+      const participantsData = await participantsRes.json();
+      setProjetTaches(tachesData.taches || []);
+      setParticipants(participantsData.participants || []);
     } catch (err) {
       setProjetTaches([]);
+      setParticipants([]);
     } finally {
       setLoadingTaches(false);
     }
@@ -357,6 +368,69 @@ export default function App() {
     } catch (err) {
       setError(`Erreur: ${err.message}`);
     }
+  };
+
+  // Fonctions pour les participants
+  const addParticipant = async (tacheId, participantData) => {
+    try {
+      const response = await fetch(`${API_URL}?table=participants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tacheId, ...participantData }),
+      });
+      const data = await response.json();
+      if (data.participant) {
+        setParticipants(prev => [...prev, data.participant]);
+        setTacheParticipants(prev => [...prev, data.participant]);
+      }
+      return data.participant;
+    } catch (err) {
+      setError(`Erreur ajout participant: ${err.message}`);
+    }
+  };
+
+  const updateParticipant = async (participantData) => {
+    try {
+      await fetch(`${API_URL}?table=participants`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(participantData),
+      });
+      setParticipants(prev => prev.map(p => p.id === participantData.id ? { ...p, ...participantData } : p));
+      setTacheParticipants(prev => prev.map(p => p.id === participantData.id ? { ...p, ...participantData } : p));
+    } catch (err) {
+      setError(`Erreur mise à jour participant: ${err.message}`);
+    }
+  };
+
+  const deleteParticipant = async (id) => {
+    try {
+      await fetch(`${API_URL}?table=participants&id=${id}`, { method: 'DELETE' });
+      setParticipants(prev => prev.filter(p => p.id !== id));
+      setTacheParticipants(prev => prev.filter(p => p.id !== id));
+    } catch (err) {
+      setError(`Erreur suppression participant: ${err.message}`);
+    }
+  };
+
+  // Calculer les heures et dates d'une tâche à partir des participants
+  const getParticipantsForTache = (tacheId) => {
+    return participants.filter(p => p.tacheId === tacheId);
+  };
+
+  const calculateTacheFromParticipants = (tacheId) => {
+    const tacheParticipants = getParticipantsForTache(tacheId);
+    if (tacheParticipants.length === 0) return { heures: 0, dateDebut: null, dateFin: null };
+    
+    const heures = tacheParticipants.reduce((sum, p) => sum + (p.heures || 0), 0);
+    const dates = tacheParticipants
+      .filter(p => p.dateDebut || p.dateFin)
+      .flatMap(p => [p.dateDebut, p.dateFin].filter(Boolean));
+    
+    const dateDebut = dates.length > 0 ? dates.sort()[0] : null;
+    const dateFin = dates.length > 0 ? dates.sort().reverse()[0] : null;
+    
+    return { heures, dateDebut, dateFin };
   };
 
   const toggleTacheStatus = async (tache) => {
@@ -1042,59 +1116,95 @@ export default function App() {
                         ) : (
                           <div className="divide-y">
                             {sprintTaches.map(tache => {
-                              const assigne = getCollab(tache.assigne);
+                              const capitaine = getCollab(tache.capitaine);
+                              const tacheParticipants = getParticipantsForTache(tache.id);
+                              const calcul = calculateTacheFromParticipants(tache.id);
                               const isDone = tache.status === 'done';
+                              // Utiliser les heures calculées si participants, sinon heures de la tâche
+                              const heuresAffichees = tacheParticipants.length > 0 ? calcul.heures : tache.dureeEstimee;
                               return (
                                 <div key={tache.id} draggable="true" onDragStart={(e) => handleDragStart(e, tache)} onDragEnd={handleDragEnd}
-                                  className={`p-4 hover:bg-gray-50 flex items-center gap-4 cursor-grab active:cursor-grabbing transition-all ${draggedTache?.id === tache.id ? 'opacity-50 bg-purple-50' : ''}`}>
-                                  <div className="text-gray-400 cursor-grab">⋮⋮</div>
-                                  {/* Photo du collaborateur assigné à gauche */}
-                                  <div className="flex-shrink-0" onClick={() => toggleTacheStatus(tache)} title={isDone ? "Marquer à faire" : "Marquer terminé"}>
-                                    {assigne ? (
-                                      <div className={`relative ${isDone ? 'opacity-60' : ''}`}>
-                                        {assigne.photo ? (
-                                          <img src={assigne.photo} alt={assigne.name} className={`w-10 h-10 rounded-full object-cover border-2 ${isDone ? 'border-green-500' : 'border-gray-200 hover:border-purple-400'} cursor-pointer transition-all`} />
-                                        ) : (
-                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm border-2 ${isDone ? 'border-green-500' : 'border-transparent hover:border-purple-400'} cursor-pointer transition-all`} 
-                                            style={{ backgroundColor: assigne.color }}>{assigne.name.charAt(0)}</div>
-                                        )}
-                                        {isDone && (
-                                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
-                                        )}
-                                      </div>
-                                    ) : (
-                                      <div className={`w-10 h-10 rounded-full border-2 border-dashed ${isDone ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-purple-400'} flex items-center justify-center cursor-pointer transition-all`}>
-                                        {isDone ? <span className="text-green-500 text-lg">✓</span> : <span className="text-gray-400 text-lg">?</span>}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`font-medium truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
-                                    {tache.commentaire && <div className="text-sm text-gray-500 truncate">{tache.commentaire}</div>}
-                                    <div className="flex items-center gap-2 mt-1">
-                                      {assigne && <span className="text-xs text-gray-400">{assigne.name}</span>}
-                                      {(tache.dateDebut || tache.dateFin) && (
-                                        <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded">
-                                          📅 {tache.dateDebut ? new Date(tache.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'} → {tache.dateFin ? new Date(tache.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'}
-                                        </span>
+                                  className={`p-4 hover:bg-gray-50 cursor-grab active:cursor-grabbing transition-all ${draggedTache?.id === tache.id ? 'opacity-50 bg-purple-50' : ''}`}>
+                                  <div className="flex items-center gap-4">
+                                    <div className="text-gray-400 cursor-grab">⋮⋮</div>
+                                    {/* Photo du capitaine à gauche */}
+                                    <div className="flex-shrink-0" onClick={() => toggleTacheStatus(tache)} title={isDone ? "Marquer à faire" : "Marquer terminé"}>
+                                      {capitaine ? (
+                                        <div className={`relative ${isDone ? 'opacity-60' : ''}`}>
+                                          {capitaine.photo ? (
+                                            <img src={capitaine.photo} alt={capitaine.name} className={`w-10 h-10 rounded-full object-cover border-2 ${isDone ? 'border-green-500' : 'border-yellow-400 hover:border-purple-400'} cursor-pointer transition-all`} />
+                                          ) : (
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm border-2 ${isDone ? 'border-green-500' : 'border-yellow-400 hover:border-purple-400'} cursor-pointer transition-all`} 
+                                              style={{ backgroundColor: capitaine.color }}>{capitaine.name.charAt(0)}</div>
+                                          )}
+                                          <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-yellow-400 rounded-full flex items-center justify-center text-xs">🏅</div>
+                                          {isDone && (
+                                            <div className="absolute -top-1 -left-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center text-white text-xs">✓</div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div className={`w-10 h-10 rounded-full border-2 border-dashed ${isDone ? 'border-green-500 bg-green-50' : 'border-gray-300 hover:border-purple-400'} flex items-center justify-center cursor-pointer transition-all`}>
+                                          {isDone ? <span className="text-green-500 text-lg">✓</span> : <span className="text-gray-400 text-lg">?</span>}
+                                        </div>
                                       )}
                                     </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className={`font-medium truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>{tache.name}</div>
+                                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        {capitaine && <span className="text-xs text-yellow-700 bg-yellow-50 px-2 py-0.5 rounded">🏅 {capitaine.name}</span>}
+                                        {(tache.dateDebut || tache.dateFin) && (
+                                          <span className="text-xs text-purple-500 bg-purple-50 px-2 py-0.5 rounded">
+                                            📅 {tache.dateDebut ? new Date(tache.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'} → {tache.dateFin ? new Date(tache.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?'}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="text-sm text-gray-500 flex-shrink-0 text-right">
+                                      <div>⏱️ {heuresAffichees}h estimé</div>
+                                      <div>✅ {tache.heuresReelles}h réel</div>
+                                    </div>
+                                    <div className="flex gap-1 flex-shrink-0">
+                                      {(tache.dateDebut || tache.dateFin) && capitaine && (
+                                        <button 
+                                          onClick={() => envoyerInvitationOutlook(tache, capitaine)} 
+                                          className="p-2 text-purple-500 hover:bg-purple-50 rounded" 
+                                          title="Envoyer invitation Outlook au capitaine"
+                                        >📧</button>
+                                      )}
+                                      <button onClick={() => { setEditingTache(tache); setTacheParticipants(getParticipantsForTache(tache.id)); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Modifier">✏️</button>
+                                      <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
+                                    </div>
                                   </div>
-                                  <div className="text-sm text-gray-500 flex-shrink-0 text-right">
-                                    <div>⏱️ {tache.dureeEstimee}h estimé</div>
-                                    <div>✅ {tache.heuresReelles}h réel</div>
-                                  </div>
-                                  <div className="flex gap-1 flex-shrink-0">
-                                    {(tache.dateDebut || tache.dateFin) && (
-                                      <button 
-                                        onClick={() => envoyerInvitationOutlook(tache, assigne)} 
-                                        className="p-2 text-purple-500 hover:bg-purple-50 rounded" 
-                                        title="Envoyer invitation Outlook au collaborateur"
-                                      >📧</button>
-                                    )}
-                                    <button onClick={() => { setEditingTache(tache); setShowTacheModal(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded" title="Modifier">✏️</button>
-                                    <button onClick={() => deleteTache(tache.id)} className="p-2 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
-                                  </div>
+                                  {/* Affichage des participants sous la tâche */}
+                                  {tacheParticipants.length > 0 && (
+                                    <div className="ml-16 mt-2 space-y-1">
+                                      {tacheParticipants.map(p => {
+                                        const collab = getCollab(p.collaborateurId);
+                                        return collab ? (
+                                          <div key={p.id} className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded px-2 py-1">
+                                            {collab.photo ? (
+                                              <img src={collab.photo} alt="" className="w-6 h-6 rounded-full object-cover" />
+                                            ) : (
+                                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs" style={{ backgroundColor: collab.color }}>{collab.name.charAt(0)}</div>
+                                            )}
+                                            <span className="font-medium">{collab.name}</span>
+                                            <span className="text-purple-600">{p.heures}h</span>
+                                            {(p.dateDebut || p.dateFin) && (
+                                              <span className="text-gray-400 text-xs">
+                                                {p.dateDebut ? new Date(p.dateDebut).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''} 
+                                                {p.dateDebut && p.dateFin ? ' → ' : ''} 
+                                                {p.dateFin ? new Date(p.dateFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''}
+                                              </span>
+                                            )}
+                                          </div>
+                                        ) : null;
+                                      })}
+                                    </div>
+                                  )}
+                                  {/* Commentaire/description */}
+                                  {tache.commentaire && (
+                                    <div className="ml-16 mt-2 text-sm text-gray-500 bg-blue-50 rounded px-3 py-2 whitespace-pre-wrap">{tache.commentaire}</div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -1254,13 +1364,14 @@ export default function App() {
 
         {showTacheModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
               <h3 className="text-xl font-bold p-6 pb-4 border-b">{editingTache ? '✏️ Modifier la tâche' : '➕ Nouvelle tâche'}</h3>
               <div className="p-6 space-y-4 overflow-y-auto flex-1">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom de la tâche *</label>
                   <input type="text" value={editingTache?.name || newTache.name}
                     onChange={(e) => editingTache ? setEditingTache({ ...editingTache, name: e.target.value }) : setNewTache({ ...newTache, name: e.target.value })}
+                    placeholder="Ex: Étude stockage données via éco system Google"
                     className="w-full p-3 border rounded-lg" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -1274,104 +1385,138 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">🏅 Capitaine</label>
-                    {(() => {
-                      // Séparer l'équipe du projet des autres collaborateurs
-                      const equipeProjetIds = selectedProjet?.collaborateurs || [];
-                      const refIAId = selectedProjet?.referentComiteIA;
-                      const refConfId = selectedProjet?.referentConformite;
-                      const allEquipeIds = [...new Set([refIAId, refConfId, ...equipeProjetIds].filter(Boolean))];
-                      
-                      const equipeProjet = allEquipeIds.map(id => getCollab(id)).filter(Boolean);
-                      const autresCollabs = collaborateurs.filter(c => !allEquipeIds.includes(c.id) && !allEquipeIds.includes(c.recordId));
-                      
-                      // Grouper les autres par service
-                      const autresParService = autresCollabs.reduce((acc, c) => {
-                        const service = c.service || 'Autre';
-                        if (!acc[service]) acc[service] = [];
-                        acc[service].push(c);
-                        return acc;
-                      }, {});
-                      
-                      return (
-                        <select value={editingTache?.assigne || newTache.assigne}
-                          onChange={(e) => editingTache ? setEditingTache({ ...editingTache, assigne: e.target.value }) : setNewTache({ ...newTache, assigne: e.target.value })}
-                          className="w-full p-3 border rounded-lg">
-                          <option value="">— Non assigné —</option>
-                          {equipeProjet.length > 0 && (
-                            <optgroup label="👥 Équipe du projet">
-                              {equipeProjet.map(c => (
-                                <option key={c.recordId || c.id} value={c.recordId || c.id}>
-                                  {c.name}{c.id === refIAId || c.recordId === refIAId ? ' 🎯' : ''}{c.id === refConfId || c.recordId === refConfId ? ' 🔒' : ''}
-                                </option>
-                              ))}
-                            </optgroup>
-                          )}
-                          <optgroup label="───────────────"></optgroup>
-                          {Object.entries(autresParService).map(([service, collabs]) => (
-                            <optgroup key={service} label={`🏢 ${service}`}>
-                              {collabs.map(c => <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name}</option>)}
-                            </optgroup>
-                          ))}
-                        </select>
-                      );
-                    })()}
+                    <select value={editingTache?.capitaine || newTache.capitaine || ''}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, capitaine: e.target.value }) : setNewTache({ ...newTache, capitaine: e.target.value })}
+                      className="w-full p-3 border rounded-lg">
+                      <option value="">— Choisir un capitaine —</option>
+                      {collaborateurs.map(c => (
+                        <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name} - {c.service || 'N/A'}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
+                
+                {/* Section Participants */}
+                <div className="border-t pt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">👥 Participants (heures et dates)</label>
+                  
+                  {/* Liste des participants existants */}
+                  {tacheParticipants.length > 0 && (
+                    <div className="space-y-2 mb-3">
+                      {tacheParticipants.map(p => {
+                        const collab = getCollab(p.collaborateurId);
+                        return collab ? (
+                          <div key={p.id} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2">
+                            {collab.photo ? (
+                              <img src={collab.photo} alt="" className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm" style={{ backgroundColor: collab.color }}>{collab.name.charAt(0)}</div>
+                            )}
+                            <span className="font-medium text-sm flex-1">{collab.name}</span>
+                            <input type="number" min="0" step="0.5" value={p.heures}
+                              onChange={(e) => updateParticipant({ ...p, heures: parseFloat(e.target.value) || 0 })}
+                              className="w-16 p-1 border rounded text-sm text-center" placeholder="h" />
+                            <span className="text-xs text-gray-500">h</span>
+                            <input type="date" value={p.dateDebut || ''}
+                              onChange={(e) => updateParticipant({ ...p, dateDebut: e.target.value })}
+                              className="w-32 p-1 border rounded text-sm" />
+                            <span className="text-xs">→</span>
+                            <input type="date" value={p.dateFin || ''}
+                              onChange={(e) => updateParticipant({ ...p, dateFin: e.target.value })}
+                              className="w-32 p-1 border rounded text-sm" />
+                            <button onClick={() => deleteParticipant(p.id)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Supprimer">🗑️</button>
+                          </div>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                  
+                  {/* Formulaire pour ajouter un participant */}
+                  {editingTache && (
+                    <div className="flex items-center gap-2 bg-blue-50 rounded-lg p-2">
+                      <select value={newParticipant.collaborateurId}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, collaborateurId: e.target.value })}
+                        className="flex-1 p-2 border rounded text-sm">
+                        <option value="">+ Ajouter un participant</option>
+                        {collaborateurs.filter(c => !tacheParticipants.some(p => p.collaborateurId === c.recordId || p.collaborateurId === c.id))
+                          .map(c => (
+                            <option key={c.recordId || c.id} value={c.recordId || c.id}>{c.name}</option>
+                          ))}
+                      </select>
+                      <input type="number" min="0" step="0.5" value={newParticipant.heures}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, heures: parseFloat(e.target.value) || 0 })}
+                        className="w-16 p-2 border rounded text-sm text-center" placeholder="h" />
+                      <input type="date" value={newParticipant.dateDebut}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, dateDebut: e.target.value })}
+                        className="w-32 p-2 border rounded text-sm" />
+                      <span className="text-xs">→</span>
+                      <input type="date" value={newParticipant.dateFin}
+                        onChange={(e) => setNewParticipant({ ...newParticipant, dateFin: e.target.value })}
+                        className="w-32 p-2 border rounded text-sm" />
+                      <button onClick={async () => {
+                        if (!newParticipant.collaborateurId) return;
+                        await addParticipant(editingTache.id, newParticipant);
+                        setNewParticipant({ collaborateurId: '', heures: 0, dateDebut: '', dateFin: '' });
+                      }} className="px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">+</button>
+                    </div>
+                  )}
+                  
+                  {!editingTache && (
+                    <p className="text-sm text-gray-500 italic">💡 Créez d'abord la tâche, puis ajoutez les participants en la modifiant.</p>
+                  )}
+                  
+                  {/* Résumé calculé */}
+                  {tacheParticipants.length > 0 && (
+                    <div className="mt-3 p-2 bg-purple-50 rounded-lg text-sm">
+                      <span className="font-medium text-purple-700">📊 Total calculé :</span>
+                      <span className="ml-2">{tacheParticipants.reduce((sum, p) => sum + (p.heures || 0), 0)}h</span>
+                      {(() => {
+                        const dates = tacheParticipants.flatMap(p => [p.dateDebut, p.dateFin].filter(Boolean));
+                        if (dates.length === 0) return null;
+                        const minDate = dates.sort()[0];
+                        const maxDate = dates.sort().reverse()[0];
+                        return (
+                          <span className="ml-4">
+                            📅 {new Date(minDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} → {new Date(maxDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Durée estimée (h)</label>
-                    <input type="number" min="0" step="0.5" value={editingTache?.dureeEstimee || newTache.dureeEstimee}
-                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dureeEstimee: parseFloat(e.target.value) || 0 }) : setNewTache({ ...newTache, dureeEstimee: parseFloat(e.target.value) || 0 })}
-                      className="w-full p-3 border rounded-lg" />
-                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Heures réelles</label>
                     <input type="number" min="0" step="0.5" value={editingTache?.heuresReelles || newTache.heuresReelles}
                       onChange={(e) => editingTache ? setEditingTache({ ...editingTache, heuresReelles: parseFloat(e.target.value) || 0 }) : setNewTache({ ...newTache, heuresReelles: parseFloat(e.target.value) || 0 })}
                       className="w-full p-3 border rounded-lg" />
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">📅 Date début</label>
-                    <input type="date" value={formatDateForInput(editingTache?.dateDebut) || newTache.dateDebut || ''}
-                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dateDebut: e.target.value }) : setNewTache({ ...newTache, dateDebut: e.target.value })}
-                      className="w-full p-3 border rounded-lg" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">📅 Date fin</label>
-                    <input type="date" value={formatDateForInput(editingTache?.dateFin) || newTache.dateFin || ''}
-                      min={formatDateForInput(editingTache?.dateDebut) || newTache.dateDebut || ''}
-                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, dateFin: e.target.value }) : setNewTache({ ...newTache, dateFin: e.target.value })}
-                      className="w-full p-3 border rounded-lg" />
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                    <select value={editingTache?.status || newTache.status}
+                      onChange={(e) => editingTache ? setEditingTache({ ...editingTache, status: e.target.value }) : setNewTache({ ...newTache, status: e.target.value })}
+                      className="w-full p-3 border rounded-lg">
+                      {STATUTS.map(s => <option key={s.id} value={s.id}>{s.icon} {s.name}</option>)}
+                    </select>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
-                  <div className="flex gap-2">
-                    {STATUTS.map(statut => (
-                      <button key={statut.id} type="button"
-                        onClick={() => editingTache ? setEditingTache({ ...editingTache, status: statut.id }) : setNewTache({ ...newTache, status: statut.id })}
-                        className={`flex-1 p-3 rounded-lg border-2 ${(editingTache?.status || newTache.status) === statut.id ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
-                        <div className="text-xl mb-1">{statut.icon}</div>
-                        <div className="text-xs">{statut.name}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Commentaire</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">📝 Description des actions</label>
                   <textarea value={editingTache?.commentaire || newTache.commentaire}
                     onChange={(e) => editingTache ? setEditingTache({ ...editingTache, commentaire: e.target.value }) : setNewTache({ ...newTache, commentaire: e.target.value })}
-                    rows={2} className="w-full p-3 border rounded-lg" />
+                    rows={4} className="w-full p-3 border rounded-lg" 
+                    placeholder="Décrivez qui doit faire quoi...&#10;Ex:&#10;- Laura : préparer le doc d'analyse&#10;- Michel : tester BigQuery&#10;- Geoffrey : valider la sécu" />
                 </div>
               </div>
               <div className="flex gap-3 p-6 pt-4 border-t">
-                <button onClick={() => { setShowTacheModal(false); setEditingTache(null); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
+                <button onClick={() => { setShowTacheModal(false); setEditingTache(null); setTacheParticipants([]); setNewParticipant({ collaborateurId: '', heures: 0, dateDebut: '', dateFin: '' }); }} className="flex-1 px-4 py-3 border rounded-lg hover:bg-gray-50">Annuler</button>
                 <button onClick={() => {
                   const data = editingTache || { ...newTache, projetId: selectedProjet.id };
                   if (!data.name) { alert('Nom requis'); return; }
                   saveTache(data);
+                  setTacheParticipants([]);
+                  setNewParticipant({ collaborateurId: '', heures: 0, dateDebut: '', dateFin: '' });
                 }} disabled={isSaving} className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
                   {isSaving ? '⏳' : (editingTache ? 'Modifier' : 'Créer')}
                 </button>
